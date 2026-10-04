@@ -15,7 +15,7 @@ Local Windows directory:
 First clone:
 
     cd /d "C:\54\Projects\!0724 - Coating Robot"
-    git clone https://github.com/AragCF/SIYI-MK15-Port-Inspector.git
+    git clone https://github.com/creative-force-team/SIYI-MK15-Port-Inspector.git
     cd /d "C:\54\Projects\!0724 - Coating Robot\SIYI-MK15-Port-Inspector"
 
 Update before the next test:
