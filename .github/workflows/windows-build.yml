@@ -86,7 +86,8 @@ jobs:
           Copy-Item "mk15-sdk/build/outputs/aar/mk15-sdk-release.aar" "out/MK15-CD-SDK-1.0.0.aar"
           Get-FileHash -Algorithm SHA256 "out/MK15PortInspector-1.5.0-debug.apk","out/MK15-CD-SDK-1.0.0.aar" | Format-List | Out-File "out/SHA256.txt"
 
-      - name: Upload APK
+      - name: Upload APK (best effort; build remains authoritative)
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: MK15-Port-Inspector-1.5.0-and-CD-SDK
