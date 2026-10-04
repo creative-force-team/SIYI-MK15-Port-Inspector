@@ -82,6 +82,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
     private final Map<String, AtomicLong> inputProbeCounters = new ConcurrentHashMap<>();
     private final ProbeDiffEngine probeDiff = new ProbeDiffEngine();
     private final ChannelActivityTracker rcActivity = new ChannelActivityTracker();
+    private final HardwareControlsResearch controlsResearch = new HardwareControlsResearch();
 
     private UsbManager usbManager;
     private UsbSerialCp210x serial;
@@ -106,6 +107,10 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
     private EditText udpHostEdit;
     private EditText udpPortEdit;
     private Spinner transportSpinner;
+    private Spinner controlLabelSpinner;
+    private Spinner controlKindSpinner;
+    private TextView controlsResearchText;
+    private volatile boolean controlsResearchActive;
     private volatile String currentTransport = TRANSPORT_AUTO;
 
     private ResearchTransports researchTransports;
@@ -174,8 +179,8 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         setContentView(buildUi());
         initRuntimeLog();
         applyDefaultMappingPreview();
-        appendLog("MK15 Port Inspector 1.4.0 запущен.");
-        appendLog("Цель текущего исследования: кнопки C/D и другие органы управления MK15.");
+        appendLog("MK15 Port Inspector 1.5.0 запущен.");
+        appendLog("Цель текущего исследования: полный пассивный инвентарь физических органов управления MK15.");
         appendLog("Режим исследования поддерживает USB COM, UDP, Bluetooth SPP, native ttyHS0, ttyHS1/2 и Android Input.");
         appendLog("Важно: активный поток 0x42 использует тот же канал связи, что телеметрия. Проверять только на столе, не в полёте.");
         linuxInputProbe.start();
@@ -301,6 +306,67 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         commandScroller.addView(commands);
         root.addView(commandScroller, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        HorizontalScrollView researchScroller = new HorizontalScrollView(this);
+        researchScroller.setHorizontalScrollBarEnabled(true);
+        LinearLayout researchRow = new LinearLayout(this);
+        researchRow.setOrientation(LinearLayout.HORIZONTAL);
+        researchRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        researchRow.addView(button("Исследование органов управления", v -> startControlsResearch()));
+
+        TextView researchLabelCaption = text("  Орган:", 13, true);
+        researchRow.addView(researchLabelCaption);
+
+        controlLabelSpinner = new Spinner(this);
+        String[] researchLabels = {
+                "A", "B", "SA", "SB", "SC", "LD", "RD",
+                "C (контроль)", "D (контроль)",
+                "J1", "J2", "J3", "J4", "OTHER"
+        };
+        ArrayAdapter<String> labelAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, researchLabels);
+        labelAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        controlLabelSpinner.setAdapter(labelAdapter);
+        researchRow.addView(controlLabelSpinner,
+                new LinearLayout.LayoutParams(dp(155), LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView researchKindCaption = text(" Вид:", 13, true);
+        researchRow.addView(researchKindCaption);
+
+        controlKindSpinner = new Spinner(this);
+        String[] researchKinds = {"BUTTON", "SWITCH_3POS", "ANALOG", "STICK", "OTHER"};
+        ArrayAdapter<String> kindAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, researchKinds);
+        kindAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        controlKindSpinner.setAdapter(kindAdapter);
+        researchRow.addView(controlKindSpinner,
+                new LinearLayout.LayoutParams(dp(175), LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        controlLabelSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                String label = selectedResearchLabel();
+                controlKindSpinner.setSelection(kindIndexForLabel(label));
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {
+            }
+        });
+
+        researchRow.addView(button("Начать запись органа", v -> beginControlExperiment()));
+        researchRow.addView(button("Завершить запись", v -> finishControlExperiment()));
+        researchRow.addView(button("Остановить исследование", v -> stopControlsResearch(true)));
+        researchScroller.addView(researchRow);
+        root.addView(researchScroller, lpMatchWrap());
+
+        controlsResearchText = text(
+                "Исследование органов управления не запущено. Режим читает только SIYI mapping 0x48 и RC-каналы 0x42; конфигурацию пульта не изменяет.",
+                14, true);
+        controlsResearchText.setPadding(dp(8), dp(4), dp(8), dp(4));
+        controlsResearchText.setBackgroundColor(Color.rgb(232, 245, 233));
+        root.addView(controlsResearchText, lpMatchWrap());
 
         LinearLayout finderButtons = new LinearLayout(this);
         finderButtons.setOrientation(LinearLayout.HORIZONTAL);
@@ -906,6 +972,246 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         return sb.toString();
     }
 
+    private void startControlsResearch() {
+        if (controlsResearch.isRecording()) {
+            Toast.makeText(this, "Сначала завершите текущую запись органа.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        final int framesBefore = channelFrameCount;
+        controlsResearch.reset();
+        if (mappingReceived) {
+            byte[] raw = new byte[CHANNEL_COUNT * 2];
+            for (int i = 0; i < CHANNEL_COUNT; i++) {
+                raw[i * 2] = (byte) mappingType[i];
+                raw[i * 2 + 1] = (byte) mappingEntity[i];
+            }
+            controlsResearch.setMapping(raw, mappingType, mappingEntity);
+        }
+
+        controlsResearchActive = true;
+        finderActive = false;
+        rcActivity.clear();
+
+        currentTransport = TRANSPORT_UART0;
+        if (transportSpinner != null) transportSpinner.setSelection(4);
+
+        controlsResearchText.setBackgroundColor(Color.rgb(255, 243, 224));
+        controlsResearchText.setText(
+                "Подключаю официальный SIYI UART0, читаю mapping и запускаю поток RC 20 Гц. "
+                        + "Никаких команд полётному контроллеру или изменения mapping приложение не выполняет.");
+        appendLog("Hardware Controls Research: старт; UART0 /dev/ttyHS0, mapping 0x48, RC 20 Гц.");
+        connectSelectedTransport();
+
+        worker.submit(() -> {
+            sleepQuiet(450);
+            boolean mappingSent = sendResearchFrame(
+                    ResearchTransports.UART0,
+                    SiyiProtocol.mappingRequest(nextSeq()),
+                    "HCR 0x48 mapping");
+            sleepQuiet(350);
+
+            byte[] stream = SiyiProtocol.channelStreamRequest(5, 0);
+            boolean sent = false;
+            for (int i = 0; i < 3; i++) {
+                sent |= sendResearchFrame(
+                        ResearchTransports.UART0,
+                        stream,
+                        i == 0 ? "HCR 0x42 RC 20Hz" : null);
+                sleepQuiet(60);
+            }
+            streamEnabled = sent;
+
+            final boolean finalMappingSent = mappingSent;
+            final boolean finalSent = sent;
+            runOnUiThread(() -> {
+                if (finalSent) {
+                    setStatus("Исследование органов: UART0, RC 20 Гц");
+                    controlsResearchText.setBackgroundColor(Color.rgb(200, 230, 201));
+                    controlsResearchText.setText(
+                            "Исследование запущено. Дождитесь живых значений, выберите один физический орган, "
+                                    + "нажмите «Начать запись органа», выполните не менее 5 циклов и завершите запись.");
+                } else {
+                    controlsResearchText.setBackgroundColor(Color.rgb(255, 205, 210));
+                    controlsResearchText.setText(
+                            "Не удалось отправить 0x42 через UART0. Проверьте журнал и состояние удалённого пульта.");
+                }
+            });
+
+            appendLog("Hardware Controls Research: mappingSent=" + finalMappingSent
+                    + " stream20HzSent=" + finalSent);
+
+            sleepQuiet(1800);
+            if (channelFrameCount <= framesBefore) {
+                appendLog("Hardware Controls Research: после запуска нет новых 0x42 channel frames.");
+                runOnUiThread(() -> {
+                    controlsResearchText.setBackgroundColor(Color.rgb(255, 224, 178));
+                    controlsResearchText.setText(
+                            "Поток 0x42 запрошен, но живые каналы пока не получены. "
+                                    + "Не начинайте физический опыт; сначала сохраните диагностический ZIP.");
+                });
+            }
+        });
+    }
+
+    private void stopControlsResearch(boolean userInitiated) {
+        if (controlsResearch.isRecording()) {
+            try {
+                HardwareControlsResearch.ExperimentResult result =
+                        controlsResearch.finishExperiment(System.currentTimeMillis());
+                appendLog("Hardware Controls Research: активный опыт автоматически завершён при остановке, №"
+                        + result.number + " " + result.physicalLabel);
+            } catch (Throwable ignored) {
+            }
+        }
+
+        controlsResearchActive = false;
+        if (researchTransports == null || !researchTransports.isWritable(ResearchTransports.UART0)) {
+            if (userInitiated) {
+                controlsResearchText.setText("Исследование остановлено; UART0 уже недоступен.");
+            }
+            return;
+        }
+
+        worker.submit(() -> {
+            byte[] off = SiyiProtocol.channelStreamRequest(0, 0);
+            for (int i = 0; i < 3; i++) {
+                sendResearchFrame(ResearchTransports.UART0, off,
+                        i == 0 ? "HCR 0x42 OFF" : null);
+                sleepQuiet(60);
+            }
+            streamEnabled = false;
+            runOnUiThread(() -> {
+                if (userInitiated) {
+                    controlsResearchText.setBackgroundColor(Color.rgb(232, 245, 233));
+                    controlsResearchText.setText(
+                            "Исследование остановлено. Записанные опыты сохранены в памяти и войдут в ZIP-отчёт.");
+                }
+                setStatus("RC-поток исследования выключен");
+            });
+        });
+    }
+
+    private void beginControlExperiment() {
+        if (!controlsResearchActive) {
+            Toast.makeText(this,
+                    "Сначала нажмите «Исследование органов управления».",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!mappingReceived || channelFrameCount <= 0) {
+            Toast.makeText(this,
+                    "Нужны живой mapping и RC-каналы. Дождитесь данных перед началом опыта.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (controlsResearch.isRecording()) {
+            Toast.makeText(this,
+                    "Запись уже идёт: " + controlsResearch.activeLabel(),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        String label = selectedResearchLabel();
+        String kind = selectedResearchKind();
+        try {
+            int number = controlsResearch.beginExperiment(label, kind, System.currentTimeMillis());
+            appendLog("Hardware Controls Research: BEGIN experiment #" + number
+                    + " label=" + label + " kind=" + kind);
+            controlsResearchText.setBackgroundColor(Color.rgb(255, 248, 225));
+            controlsResearchText.setText(
+                    "ЗАПИСЬ №" + number + ": " + label + " / " + kind
+                            + ". Не трогайте остальные органы. Выполните требуемые циклы, затем нажмите «Завершить запись».");
+        } catch (Throwable t) {
+            appendLog("Hardware Controls Research: begin failed — " + stackSummary(t));
+        }
+    }
+
+    private void finishControlExperiment() {
+        if (!controlsResearch.isRecording()) {
+            Toast.makeText(this, "Нет активной записи органа.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        try {
+            HardwareControlsResearch.ExperimentResult result =
+                    controlsResearch.finishExperiment(System.currentTimeMillis());
+            String candidates = formatCandidateChannels(result.candidateChannels);
+            appendLog("Hardware Controls Research: END experiment #" + result.number
+                    + " label=" + result.physicalLabel
+                    + " candidates=" + candidates);
+            controlsResearchText.setBackgroundColor(Color.rgb(200, 230, 201));
+            controlsResearchText.setText(
+                    "Опыт №" + result.number + " завершён: " + result.physicalLabel
+                            + ". Изменявшиеся каналы: " + candidates
+                            + ". Выберите следующий орган или сформируйте ZIP-отчёт.");
+        } catch (Throwable t) {
+            appendLog("Hardware Controls Research: finish failed — " + stackSummary(t));
+        }
+    }
+
+    private String selectedResearchLabel() {
+        if (controlLabelSpinner == null || controlLabelSpinner.getSelectedItem() == null) return "UNKNOWN";
+        String label = String.valueOf(controlLabelSpinner.getSelectedItem());
+        if (label.startsWith("C ")) return "C";
+        if (label.startsWith("D ")) return "D";
+        return label;
+    }
+
+    private String selectedResearchKind() {
+        if (controlKindSpinner == null || controlKindSpinner.getSelectedItem() == null) return "OTHER";
+        return String.valueOf(controlKindSpinner.getSelectedItem());
+    }
+
+    private int kindIndexForLabel(String label) {
+        if ("A".equals(label) || "B".equals(label) || "C".equals(label) || "D".equals(label)) return 0;
+        if ("SA".equals(label) || "SB".equals(label) || "SC".equals(label)) return 1;
+        if ("LD".equals(label) || "RD".equals(label)) return 2;
+        if ("J1".equals(label) || "J2".equals(label) || "J3".equals(label) || "J4".equals(label)) return 3;
+        return 4;
+    }
+
+    private String formatCandidateChannels(int[] channels) {
+        if (channels == null || channels.length == 0) return "не обнаружено";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < channels.length; i++) {
+            if (i > 0) sb.append(", ");
+            int ch = channels[i];
+            int idx = ch - 1;
+            sb.append("CH").append(ch);
+            if (idx >= 0 && idx < CHANNEL_COUNT && mappingType[idx] >= 0) {
+                sb.append("=").append(mappedName(idx));
+            }
+        }
+        return sb.toString();
+    }
+
+    private void updateResearchChannelRow(int index, long nowMs) {
+        if (channelRows[index] == null) return;
+        HardwareControlsResearch.RowSnapshot row = controlsResearch.rowSnapshot(index);
+        if (!row.initialized) {
+            channelRows[index].setText(String.format(Locale.US,
+                    "CH%02d t=%d/id=%d %-7s  —",
+                    row.channel, row.type, row.entity, row.name));
+        } else {
+            String last = row.lastChangeMs <= 0
+                    ? "—"
+                    : new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date(row.lastChangeMs));
+            channelRows[index].setText(String.format(Locale.US,
+                    "CH%02d t=%d/id=%d %-7s cur=%4d min=%4d max=%4d Δ=%+4d %-6s chg=%d last=%s",
+                    row.channel, row.type, row.entity, row.name,
+                    row.current, row.min, row.max, row.delta(), row.state, row.changes, last));
+        }
+
+        if (row.changedRecently(nowMs, 900)) {
+            channelRows[index].setBackgroundColor(Color.rgb(255, 235, 59));
+            channelRows[index].setTypeface(null, android.graphics.Typeface.BOLD);
+        } else {
+            channelRows[index].setBackgroundColor((index % 2 == 0) ? Color.WHITE : Color.rgb(238, 238, 238));
+            channelRows[index].setTypeface(null, android.graphics.Typeface.NORMAL);
+        }
+    }
+
     private String rcButtonState(int value) {
         if (value < 0) return "нет данных";
         if (value <= 1250) return "низкое";
@@ -980,7 +1286,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 runOnUiThread(() -> {
                     finderText.setBackgroundColor(Color.rgb(255, 224, 178));
                     finderText.setText("Нет ответа SIYI SDK. Откройте SIYI TX → Datalink и проверьте Connection. "
-                            + "Для UART используйте /dev/ttyHS0; приложение 1.4.0 настраивает его после открытия на 115200 raw. "
+                            + "Для UART используйте /dev/ttyHS0; приложение 1.5.0 настраивает его после открытия на 115200 raw. "
                             + "После смены Connection снова нажмите «АВТОПОИСК C/D (20 Гц)».");
                 });
             }
@@ -1158,11 +1464,20 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         rcActivity.update(source, values);
         lastRcSource = source;
 
+        final long researchNow = System.currentTimeMillis();
+        if (controlsResearchActive) {
+            controlsResearch.onChannels(values, researchNow);
+        }
+
         runOnUiThread(() -> {
             for (int i = 0; i < CHANNEL_COUNT; i++) {
-                String name = mappedName(i);
-                boolean isSa = i == saChannelIndex;
-                updateChannelRow(i, name, values[i], isSa);
+                if (controlsResearchActive) {
+                    updateResearchChannelRow(i, researchNow);
+                } else {
+                    String name = mappedName(i);
+                    boolean isSa = i == saChannelIndex;
+                    updateChannelRow(i, name, values[i], isSa);
+                }
             }
             int saValue = saChannelIndex >= 0 && saChannelIndex < CHANNEL_COUNT ? values[saChannelIndex] : -1;
             String mappingNote = mappingReceived ? "mapping 0x48 подтверждён" : "mapping пока заводской";
@@ -1198,11 +1513,16 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         }
         mappingReceived = true;
         if (foundSa >= 0) saChannelIndex = foundSa;
+        controlsResearch.setMapping(data, mappingType, mappingEntity);
         appendLog(decoded.toString());
         final int finalFoundSa = foundSa;
         runOnUiThread(() -> {
             for (int i = 0; i < CHANNEL_COUNT; i++) {
-                updateChannelRow(i, mappedName(i), channelValue[i], i == saChannelIndex);
+                if (controlsResearchActive) {
+                    updateResearchChannelRow(i, System.currentTimeMillis());
+                } else {
+                    updateChannelRow(i, mappedName(i), channelValue[i], i == saChannelIndex);
+                }
             }
             if (finalFoundSa >= 0) {
                 saText.setText("SA найден в mapping: физический type=5, entity_id=0 → CH" + (finalFoundSa + 1)
@@ -1347,14 +1667,14 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 try {
                     Map<String, String> fields = new LinkedHashMap<>();
                     fields.put("report_id", zip.getName());
-                    fields.put("app_version", "1.4.0");
+                    fields.put("app_version", "1.5.0");
                     fields.put("package", getPackageName());
                     fields.put("device", Build.MANUFACTURER + " " + Build.MODEL);
                     fields.put("android", Build.VERSION.RELEASE + " / API " + Build.VERSION.SDK_INT);
                     fields.put("transport", currentTransport);
                     fields.put("sa_channel", String.valueOf(saChannelIndex + 1));
                     fields.put("finder_rounds", String.valueOf(probeDiff.getRounds()));
-                    fields.put("research_target", "C/D buttons plus generic controls");
+                    fields.put("research_target", "hardware controls inventory");
 
                     ReportTools.UploadResult result =
                             ReportTools.uploadMultipart(REPORT_ENDPOINT, zip, fields);
@@ -1421,7 +1741,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 }
 
                 String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-                String fileName = "MK15_Report_" + ts + "_v1.4.0.zip";
+                String fileName = "MK15_Report_" + ts + "_v1.5.0.zip";
 
                 File base = getExternalFilesDir(null);
                 if (base == null) base = getFilesDir();
@@ -1438,6 +1758,11 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 entries.put("scan/full_scan.txt", ReportTools.utf8(fullScan));
                 entries.put("state/dynamic_snapshot.txt", ReportTools.utf8(mapToText(dynamic)));
                 entries.put("state/mapping.txt", ReportTools.utf8(buildMappingText()));
+                entries.put("SUMMARY.md", ReportTools.utf8(controlsResearch.buildSummaryMarkdown()));
+                entries.put("controls.json", ReportTools.utf8(controlsResearch.buildControlsJson()));
+                entries.put("controls.csv", ReportTools.utf8(controlsResearch.buildControlsCsv()));
+                entries.put("events.csv", ReportTools.utf8(controlsResearch.eventsCsv()));
+                entries.put("mapping_raw.txt", ReportTools.utf8(controlsResearch.mappingRawText()));
                 entries.put("logs/session.log", ReportTools.utf8(session));
 
                 if (runtimeLogFile != null && runtimeLogFile.exists()) {
@@ -1492,9 +1817,9 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
     private String buildReportSummary(
             String reason, String status, String sa, String fileName) {
-        return "report_format=1\n"
+        return "report_format=2\n"
                 + "app=MK15 Port Inspector\n"
-                + "app_version=1.4.0\n"
+                + "app_version=1.5.0\n"
                 + "package=" + getPackageName() + "\n"
                 + "created_at=" + new SimpleDateFormat(
                         "yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(new Date()) + "\n"
@@ -1512,6 +1837,8 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 + "research_target=C/D buttons plus generic controls\n"
                 + "control_status=" + sa + "\n"
                 + "finder_rounds=" + probeDiff.getRounds() + "\n"
+                + "hardware_research_active=" + controlsResearchActive + "\n"
+                + "hardware_research_experiments=" + controlsResearch.completedExperimentCount() + "\n"
                 + "valid_siyi_frames=" + validSiyiFrames + "\n"
                 + "channel_frame_count=" + channelFrameCount + "\n"
                 + "upload_endpoint=" + REPORT_ENDPOINT + "\n";
@@ -1519,11 +1846,12 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
     private String buildReportReadme() {
         return "MK15 Port Inspector diagnostic report ZIP\n\n"
-                + "Created entirely on the MK15 without ADB. Version 1.4.0 configures official UART0 (/dev/ttyHS0) to 115200 raw before SDK probing.\n"
+                + "Created entirely on the MK15 without ADB. Version 1.5.0 configures official UART0 (/dev/ttyHS0) to 115200 raw before SDK probing.\n"
                 + "The working ZIP is kept under the app external files/reports directory.\n"
                 + "ZIP → Download copies it to Download/MK15PortInspector for File Explorer and adb pull.\n"
                 + "ZIP → флешка/файл opens Android's file picker; select a USB flash drive if it is mounted.\n"
                 + "ZIP → thesystem POSTs multipart/form-data to " + REPORT_ENDPOINT + ".\n\n"
+                + "Hardware Controls Research files: SUMMARY.md, controls.json, controls.csv, events.csv, mapping_raw.txt.\n\n"
                 + "Upload contract:\n"
                 + "  multipart file field: report (application/zip)\n"
                 + "  text fields: report_id, app_version, package, device, android, transport, "
@@ -1699,7 +2027,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             if (!dir.exists()) dir.mkdirs();
             runtimeLogFile = new File(dir, "MK15_PortInspector_runtime.log");
             try (FileWriter fw = new FileWriter(runtimeLogFile, false)) {
-                fw.write("MK15 Port Inspector 1.4.0 runtime log\n");
+                fw.write("MK15 Port Inspector 1.5.0 runtime log\n");
                 fw.write("Started: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date()) + "\n");
                 fw.write("Path: " + runtimeLogFile.getAbsolutePath() + "\n\n");
             }
