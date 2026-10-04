@@ -2,7 +2,7 @@
 
 Diagnostic Android application for SIYI MK15. The completed C/D research identified the working Datalink UART and verified the exact channels and live values of the physical C and D buttons. The application remains a reusable inspector for further MK15 interface research.
 
-Current version: 1.4.0.
+Current version: 1.5.0.
 
 ## Repository workflow
 
@@ -43,7 +43,7 @@ The script:
 
 The build output is also copied to:
 
-    out\MK15PortInspector-1.4.0-debug.apk
+    out\MK15PortInspector-1.5.0-debug.apk
 
 If automatic upload fails because of network, Git authentication, a remote update, or unrelated local changes, the run directory and local diagnostic commit are preserved. Retry with:
 
@@ -289,3 +289,24 @@ GitHub Actions run `36052471874` подтвердил сборку APK и Releas
 Полная история исследования, методика, промежуточные тупики, аппаратные доказательства, финальная спецификация и передача результата в SDK собраны в:
 
 `docs/MK15_CD_RESEARCH_FULL_REPORT.md`
+
+
+## Hardware Controls Research 1.5.0
+
+Версия 1.5.0 добавляет отдельный режим **«Исследование органов управления»** для A/B, SA/SB/SC, LD/RD, дополнительных кнопок/регуляторов и контрольных C/D.
+
+Режим использует доказанный SIYI UART0 `/dev/ttyHS0`, читает runtime mapping `0x48`, включает поток `0x42` 20 Гц и записывает отдельные физические опыты без изменения mapping или RC-конфигурации.
+
+Во время опыта таблица каналов показывает entity type/id, Current/Min/Max/Delta, состояние, число и время изменений; недавно изменившиеся строки подсвечиваются.
+
+ZIP-отчёт дополнен:
+
+- `SUMMARY.md`;
+- `controls.json`;
+- `controls.csv`;
+- `events.csv`;
+- `mapping_raw.txt`.
+
+Инструкция оператору: `docs/HARDWARE_CONTROLS_RESEARCH_1.5.0.md`.
+
+Назначение HOLD/RTH/MANUAL в рамках этой версии не выполняется: сначала собираются фактические аппаратные измерения.
