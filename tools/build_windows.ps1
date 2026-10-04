@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 $Root = Split-Path -Parent $PSScriptRoot
 $OutDir = Join-Path $Root 'out'
 $ApkSource = Join-Path $Root 'app\build\outputs\apk\debug\app-debug.apk'
-$ApkTarget = Join-Path $OutDir 'MK15PortInspector-1.4.0-debug.apk'
+$ApkTarget = Join-Path $OutDir 'MK15PortInspector-1.5.0-debug.apk'
 $AarSource = Join-Path $Root 'mk15-sdk\build\outputs\aar\mk15-sdk-release.aar'
 $AarTarget = Join-Path $OutDir 'MK15-CD-SDK-1.0.0.aar'
 $ToolsDir = Join-Path $Root '.tools'
@@ -137,6 +137,7 @@ $ProtocolSource = Join-Path $Root 'app\src\main\java\com\mk15\portinspector\Siyi
 $DiffSource = Join-Path $Root 'app\src\main\java\com\mk15\portinspector\ProbeDiffEngine.java'
 $ReportSource = Join-Path $Root 'app\src\main\java\com\mk15\portinspector\ReportTools.java'
 $ActivitySource = Join-Path $Root 'app\src\main\java\com\mk15\portinspector\ChannelActivityTracker.java'
+$HardwareResearchSource = Join-Path $Root 'app\src\main\java\com\mk15\portinspector\HardwareControlsResearch.java'
 $SdkProtocolSource = Join-Path $Root 'mk15-sdk\src\main\java\com\mk15\sdk\Mk15Protocol.java'
 $SdkEvidenceSource = Join-Path $Root 'mk15-sdk\src\main\java\com\mk15\sdk\Mk15Evidence.java'
 $ProtocolTest = Join-Path $Root 'host-tests\ProtocolSelfTest.java'
@@ -144,10 +145,11 @@ $DiffTest = Join-Path $Root 'host-tests\ProbeDiffSelfTest.java'
 $ReportTest = Join-Path $Root 'host-tests\ReportToolsSelfTest.java'
 $ActivityTest = Join-Path $Root 'host-tests\ChannelActivityTrackerSelfTest.java'
 $SdkTest = Join-Path $Root 'host-tests\Mk15SdkSelfTest.java'
+$HardwareResearchTest = Join-Path $Root 'host-tests\HardwareControlsResearchSelfTest.java'
 
 Write-Host ''
 Write-Host 'Running SIYI protocol self-test...'
-& $Javac -encoding UTF-8 -d $HostBuild $ProtocolSource $DiffSource $ReportSource $ActivitySource $SdkProtocolSource $SdkEvidenceSource $ProtocolTest $DiffTest $ReportTest $ActivityTest $SdkTest
+& $Javac -encoding UTF-8 -d $HostBuild $ProtocolSource $DiffSource $ReportSource $ActivitySource $HardwareResearchSource $SdkProtocolSource $SdkEvidenceSource $ProtocolTest $DiffTest $ReportTest $ActivityTest $SdkTest $HardwareResearchTest
 if ($LASTEXITCODE -ne 0) {
     Fail ('javac protocol test compile returned exit code ' + $LASTEXITCODE)
 }
@@ -171,6 +173,10 @@ if ($LASTEXITCODE -ne 0) {
 & $Java -cp $HostBuild Mk15SdkSelfTest
 if ($LASTEXITCODE -ne 0) {
     Fail ('Mk15SdkSelfTest returned exit code ' + $LASTEXITCODE)
+}
+& $Java -cp $HostBuild HardwareControlsResearchSelfTest
+if ($LASTEXITCODE -ne 0) {
+    Fail ('HardwareControlsResearchSelfTest returned exit code ' + $LASTEXITCODE)
 }
 
 $GradleCmd = Get-Command gradle.bat -ErrorAction SilentlyContinue
