@@ -196,8 +196,8 @@ GitHub Actions run `36052471874` — success.
 
 Сборка 1.5.0 и новый `HardwareControlsResearchSelfTest` фактически прошли на `aragcf-win-studio` в автономном запуске `37231254694`: все host-tests завершились успешно, Android APK собран. Проверенный APK имеет SHA-256:
 
-`b053121921e1fd1b0bf45c8e70cea845df4eb4984bebec73c52ec9747c4956ae`
+`6bb6e2f79990569e49fcadecc09895f4aee5323c4c166a77930079df44055c41`
 
-Попытка выгрузить APK в GitHub Actions artifact упёрлась не в сборку, а в исчерпанную квоту хранилища Actions. Поэтому повторная сборка `37231447291` сохраняет проверенный APK в устойчивую staging-папку Studio и затем устанавливает его на MK15 напрямую через существующий контур CZ.
+Попытка выгрузить APK в GitHub Actions artifact упёрлась не в сборку, а в исчерпанную квоту хранилища Actions. Повторная сборка `37231447291` также прошла успешно и сохранила проверенный APK в устойчивую staging-папку Studio: `C:\ProgramData\CreativeForceTeam\MK15PortInspector\staging\1.5.0\MK15PortInspector-1.5.0-debug.apk`. Именно эта сборка с указанным выше SHA-256 будет устанавливаться на MK15 через существующий контур CZ.
 
 Первая живая проверка CZ от 2026-10-04 дошла до реального `online-cz`, но reverse listener `127.0.0.1:33877` в тот момент отсутствовал: `adb connect` получил `Connection refused`. Это остаётся единственным известным препятствием перед шагами 6–7.
