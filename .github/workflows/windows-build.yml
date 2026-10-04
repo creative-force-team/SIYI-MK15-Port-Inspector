@@ -65,12 +65,13 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path ".host-test-build" | Out-Null
-          javac -encoding UTF-8 -d ".host-test-build" "app/src/main/java/com/mk15/portinspector/SiyiProtocol.java" "app/src/main/java/com/mk15/portinspector/ProbeDiffEngine.java" "app/src/main/java/com/mk15/portinspector/ReportTools.java" "app/src/main/java/com/mk15/portinspector/ChannelActivityTracker.java" "mk15-sdk/src/main/java/com/mk15/sdk/Mk15Protocol.java" "mk15-sdk/src/main/java/com/mk15/sdk/Mk15Evidence.java" "host-tests/ProtocolSelfTest.java" "host-tests/ProbeDiffSelfTest.java" "host-tests/ReportToolsSelfTest.java" "host-tests/ChannelActivityTrackerSelfTest.java" "host-tests/Mk15SdkSelfTest.java"
+          javac -encoding UTF-8 -d ".host-test-build" "app/src/main/java/com/mk15/portinspector/SiyiProtocol.java" "app/src/main/java/com/mk15/portinspector/ProbeDiffEngine.java" "app/src/main/java/com/mk15/portinspector/ReportTools.java" "app/src/main/java/com/mk15/portinspector/ChannelActivityTracker.java" "app/src/main/java/com/mk15/portinspector/HardwareControlsResearch.java" "mk15-sdk/src/main/java/com/mk15/sdk/Mk15Protocol.java" "mk15-sdk/src/main/java/com/mk15/sdk/Mk15Evidence.java" "host-tests/ProtocolSelfTest.java" "host-tests/ProbeDiffSelfTest.java" "host-tests/ReportToolsSelfTest.java" "host-tests/ChannelActivityTrackerSelfTest.java" "host-tests/Mk15SdkSelfTest.java" "host-tests/HardwareControlsResearchSelfTest.java"
           java -cp ".host-test-build" ProtocolSelfTest
           java -cp ".host-test-build" ProbeDiffSelfTest
           java -cp ".host-test-build" ReportToolsSelfTest
           java -cp ".host-test-build" ChannelActivityTrackerSelfTest
           java -cp ".host-test-build" Mk15SdkSelfTest
+          java -cp ".host-test-build" HardwareControlsResearchSelfTest
 
       - name: Build debug APK
         shell: pwsh
@@ -81,16 +82,17 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "out" | Out-Null
-          Copy-Item "app/build/outputs/apk/debug/app-debug.apk" "out/MK15PortInspector-1.4.0-debug.apk"
+          Copy-Item "app/build/outputs/apk/debug/app-debug.apk" "out/MK15PortInspector-1.5.0-debug.apk"
           Copy-Item "mk15-sdk/build/outputs/aar/mk15-sdk-release.aar" "out/MK15-CD-SDK-1.0.0.aar"
-          Get-FileHash -Algorithm SHA256 "out/MK15PortInspector-1.4.0-debug.apk","out/MK15-CD-SDK-1.0.0.aar" | Format-List | Out-File "out/SHA256.txt"
+          Get-FileHash -Algorithm SHA256 "out/MK15PortInspector-1.5.0-debug.apk","out/MK15-CD-SDK-1.0.0.aar" | Format-List | Out-File "out/SHA256.txt"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MK15-Port-Inspector-and-CD-SDK
+          name: MK15-Port-Inspector-1.5.0-and-CD-SDK
           path: |
-            out/MK15PortInspector-1.4.0-debug.apk
+            out/MK15PortInspector-1.5.0-debug.apk
             out/MK15-CD-SDK-1.0.0.aar
             out/SHA256.txt
           if-no-files-found: error
+          retention-days: 3
