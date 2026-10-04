@@ -441,7 +441,7 @@ public final class HardwareControlsResearch {
         sb.append("{\n");
         sb.append("  \"device\": \"SIYI MK15\",\n");
         sb.append("  \"research_started_ms\": ").append(researchStartedMs).append(",\n");
-        sb.append("  \"experiments\": [\n");
+        sb.append("  \"controls\": [\n");
 
         for (int ei = 0; ei < completed.size(); ei++) {
             Experiment e = completed.get(ei);
