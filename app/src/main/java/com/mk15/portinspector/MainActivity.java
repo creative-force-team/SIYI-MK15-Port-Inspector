@@ -109,6 +109,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
     private Spinner transportSpinner;
     private Spinner controlLabelSpinner;
     private Spinner controlKindSpinner;
+    private EditText controlCustomLabelEdit;
     private TextView controlsResearchText;
     private volatile boolean controlsResearchActive;
     private volatile String currentTransport = TRANSPORT_AUTO;
@@ -330,6 +331,12 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         controlLabelSpinner.setAdapter(labelAdapter);
         researchRow.addView(controlLabelSpinner,
                 new LinearLayout.LayoutParams(dp(155), LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        controlCustomLabelEdit = new EditText(this);
+        controlCustomLabelEdit.setSingleLine(true);
+        controlCustomLabelEdit.setHint("Имя для OTHER");
+        researchRow.addView(controlCustomLabelEdit,
+                new LinearLayout.LayoutParams(dp(180), LinearLayout.LayoutParams.WRAP_CONTENT));
 
         TextView researchKindCaption = text(" Вид:", 13, true);
         researchRow.addView(researchKindCaption);
@@ -1155,6 +1162,10 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         String label = String.valueOf(controlLabelSpinner.getSelectedItem());
         if (label.startsWith("C ")) return "C";
         if (label.startsWith("D ")) return "D";
+        if ("OTHER".equals(label) && controlCustomLabelEdit != null) {
+            String custom = controlCustomLabelEdit.getText().toString().trim();
+            if (!custom.isEmpty()) return custom;
+        }
         return label;
     }
 
