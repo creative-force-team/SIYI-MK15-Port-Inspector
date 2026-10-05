@@ -1787,6 +1787,10 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
         reportText.setBackgroundColor(Color.rgb(232, 245, 233));
         reportText.setText("Отчёт: формирую ZIP…");
+        if (controlsResearchText != null) {
+            controlsResearchText.setBackgroundColor(Color.rgb(255, 248, 225));
+            controlsResearchText.setText("Формирую ZIP-отчёт…");
+        }
 
         worker.submit(() -> {
             try {
@@ -1939,6 +1943,11 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
             pendingDownloadReport = zip;
+            if (controlsResearchText != null) {
+                controlsResearchText.setBackgroundColor(Color.rgb(255, 248, 225));
+                controlsResearchText.setText(
+                        "Для резервного сохранения ZIP подтвердите доступ приложения к хранилищу.");
+            }
             requestPermissions(
                     new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
                     REQUEST_WRITE_STORAGE);
@@ -1965,6 +1974,9 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             runOnUiThread(() -> {
                 reportText.setBackgroundColor(Color.rgb(200, 230, 201));
                 reportText.setText("Отчёт сохранён: " + target.getAbsolutePath());
+                controlsResearchText.setBackgroundColor(Color.rgb(200, 230, 201));
+                controlsResearchText.setText(
+                        "Резервный ZIP сохранён в Download/MK15PortInspector. Передайте этот файл, если thesystem недоступен.");
                 Toast.makeText(this,
                         "Готово:\n" + target.getAbsolutePath(),
                         Toast.LENGTH_LONG).show();
@@ -1974,6 +1986,9 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             runOnUiThread(() -> {
                 reportText.setBackgroundColor(Color.rgb(255, 205, 210));
                 reportText.setText("Ошибка сохранения в Download: " + stackSummary(t));
+                controlsResearchText.setBackgroundColor(Color.rgb(255, 205, 210));
+                controlsResearchText.setText(
+                        "Не удалось сохранить резервный ZIP. Сообщите об ошибке и не повторяйте физические опыты.");
             });
         }
     }
