@@ -2,7 +2,7 @@
 
 Diagnostic Android application for SIYI MK15. The completed C/D research identified the working Datalink UART and verified the exact channels and live values of the physical C and D buttons. The application remains a reusable inspector for further MK15 interface research.
 
-Current version: 1.5.0.
+Current version: 1.5.2.
 
 ## Repository workflow
 
@@ -43,7 +43,7 @@ The script:
 
 The build output is also copied to:
 
-    out\MK15PortInspector-1.5.0-debug.apk
+    out\MK15PortInspector-1.5.2-debug.apk
 
 If automatic upload fails because of network, Git authentication, a remote update, or unrelated local changes, the run directory and local diagnostic commit are preserved. Retry with:
 
@@ -310,3 +310,20 @@ ZIP-отчёт дополнен:
 Инструкция оператору: `docs/HARDWARE_CONTROLS_RESEARCH_1.5.0.md`.
 
 Назначение HOLD/RTH/MANUAL в рамках этой версии не выполняется: сначала собираются фактические аппаратные измерения.
+
+
+## Operator interface 1.5.2
+
+Версия 1.5.2 исправляет компоновку режима исследования на реальном экране SIYI MK15.
+
+Причина дефекта 1.5.0/1.5.1 была подтверждена на устройстве: служебные транспортные и диагностические элементы занимали рабочую высоту, поэтому строка выбора и кнопки записи уходили ниже видимой области. Версия 1.5.2 разделяет приложение на три верхних раздела:
+
+- **Исследование** — выбор органа, «1. Подготовить», «2. Записать», «3. Завершить», «Стоп», состояние и прокручиваемая таблица каналов;
+- **Отчёт** — сохранение ZIP, системный выбор файла/флешки и отправка отчёта в thesystem;
+- **Диагностика** — транспорт, прежний C/D Finder, сведения о портах и журнал.
+
+Основные кнопки имеют минимальную высоту 48 dp. На реальном MK15 подтверждены версия 1.5.2, установленный APK, активное окно и расположение всех четырёх основных кнопок и трёх переключателей разделов внутри экрана 1920×1080.
+
+Подробности и границы доказанности: `docs/MK15_UI_DEBUG_2026-10-05.md`.
+
+Важно: геометрия начального экрана подтверждена; полный интерактивный проход «исследование → запись → ZIP → отправка» должен быть завершён отдельно. До этого повторную физическую серию оператору проводить не требуется.
