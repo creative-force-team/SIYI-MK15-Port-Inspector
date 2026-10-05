@@ -180,7 +180,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         setContentView(buildUi());
         initRuntimeLog();
         applyDefaultMappingPreview();
-        appendLog("MK15 Port Inspector 1.5.0 запущен.");
+        appendLog("MK15 Port Inspector 1.5.1 запущен.");
         appendLog("Цель текущего исследования: полный пассивный инвентарь физических органов управления MK15.");
         appendLog("Режим исследования поддерживает USB COM, UDP, Bluetooth SPP, native ttyHS0, ttyHS1/2 и Android Input.");
         appendLog("Важно: активный поток 0x42 использует тот же канал связи, что телеметрия. Проверять только на столе, не в полёте.");
@@ -308,16 +308,20 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         root.addView(commandScroller, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        HorizontalScrollView researchScroller = new HorizontalScrollView(this);
-        researchScroller.setHorizontalScrollBarEnabled(true);
-        LinearLayout researchRow = new LinearLayout(this);
-        researchRow.setOrientation(LinearLayout.HORIZONTAL);
-        researchRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout researchPanel = new LinearLayout(this);
+        researchPanel.setOrientation(LinearLayout.VERTICAL);
+        researchPanel.setPadding(0, dp(4), 0, dp(4));
 
-        researchRow.addView(button("Исследование органов управления", v -> startControlsResearch()));
+        researchPanel.addView(
+                button("1. Запустить исследование органов управления", v -> startControlsResearch()),
+                lpMatchWrap());
 
-        TextView researchLabelCaption = text("  Орган:", 13, true);
-        researchRow.addView(researchLabelCaption);
+        LinearLayout researchSelectorRow = new LinearLayout(this);
+        researchSelectorRow.setOrientation(LinearLayout.HORIZONTAL);
+        researchSelectorRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView researchLabelCaption = text("Орган:", 13, true);
+        researchSelectorRow.addView(researchLabelCaption);
 
         controlLabelSpinner = new Spinner(this);
         String[] researchLabels = {
@@ -329,17 +333,11 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 android.R.layout.simple_spinner_item, researchLabels);
         labelAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         controlLabelSpinner.setAdapter(labelAdapter);
-        researchRow.addView(controlLabelSpinner,
-                new LinearLayout.LayoutParams(dp(155), LinearLayout.LayoutParams.WRAP_CONTENT));
+        researchSelectorRow.addView(controlLabelSpinner,
+                new LinearLayout.LayoutParams(dp(145), LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        controlCustomLabelEdit = new EditText(this);
-        controlCustomLabelEdit.setSingleLine(true);
-        controlCustomLabelEdit.setHint("Имя для OTHER");
-        researchRow.addView(controlCustomLabelEdit,
-                new LinearLayout.LayoutParams(dp(180), LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        TextView researchKindCaption = text(" Вид:", 13, true);
-        researchRow.addView(researchKindCaption);
+        TextView researchKindCaption = text("  Вид:", 13, true);
+        researchSelectorRow.addView(researchKindCaption);
 
         controlKindSpinner = new Spinner(this);
         String[] researchKinds = {"BUTTON", "SWITCH_3POS", "ANALOG", "STICK", "OTHER"};
@@ -347,8 +345,14 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 android.R.layout.simple_spinner_item, researchKinds);
         kindAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         controlKindSpinner.setAdapter(kindAdapter);
-        researchRow.addView(controlKindSpinner,
-                new LinearLayout.LayoutParams(dp(175), LinearLayout.LayoutParams.WRAP_CONTENT));
+        researchSelectorRow.addView(controlKindSpinner,
+                new LinearLayout.LayoutParams(dp(170), LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        controlCustomLabelEdit = new EditText(this);
+        controlCustomLabelEdit.setSingleLine(true);
+        controlCustomLabelEdit.setHint("Имя для OTHER");
+        researchSelectorRow.addView(controlCustomLabelEdit,
+                new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         controlLabelSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override
@@ -361,12 +365,25 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             public void onNothingSelected(android.widget.AdapterView<?> parent) {
             }
         });
+        researchPanel.addView(researchSelectorRow, lpMatchWrap());
 
-        researchRow.addView(button("Начать запись органа", v -> beginControlExperiment()));
-        researchRow.addView(button("Завершить запись", v -> finishControlExperiment()));
-        researchRow.addView(button("Остановить исследование", v -> stopControlsResearch(true)));
-        researchScroller.addView(researchRow);
-        root.addView(researchScroller, lpMatchWrap());
+        LinearLayout researchActionRow = new LinearLayout(this);
+        researchActionRow.setOrientation(LinearLayout.HORIZONTAL);
+        researchActionRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button beginResearchButton = button("2. Начать запись", v -> beginControlExperiment());
+        Button finishResearchButton = button("3. Завершить запись", v -> finishControlExperiment());
+        Button stopResearchButton = button("Остановить исследование", v -> stopControlsResearch(true));
+
+        researchActionRow.addView(beginResearchButton,
+                new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        researchActionRow.addView(finishResearchButton,
+                new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        researchActionRow.addView(stopResearchButton,
+                new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        researchPanel.addView(researchActionRow, lpMatchWrap());
+        root.addView(researchPanel, lpMatchWrap());
 
         controlsResearchText = text(
                 "Исследование органов управления не запущено. Режим читает только SIYI mapping 0x48 и RC-каналы 0x42; конфигурацию пульта не изменяет.",
@@ -1297,7 +1314,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 runOnUiThread(() -> {
                     finderText.setBackgroundColor(Color.rgb(255, 224, 178));
                     finderText.setText("Нет ответа SIYI SDK. Откройте SIYI TX → Datalink и проверьте Connection. "
-                            + "Для UART используйте /dev/ttyHS0; приложение 1.5.0 настраивает его после открытия на 115200 raw. "
+                            + "Для UART используйте /dev/ttyHS0; приложение 1.5.1 настраивает его после открытия на 115200 raw. "
                             + "После смены Connection снова нажмите «АВТОПОИСК C/D (20 Гц)».");
                 });
             }
@@ -1678,7 +1695,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 try {
                     Map<String, String> fields = new LinkedHashMap<>();
                     fields.put("report_id", zip.getName());
-                    fields.put("app_version", "1.5.0");
+                    fields.put("app_version", "1.5.1");
                     fields.put("package", getPackageName());
                     fields.put("device", Build.MANUFACTURER + " " + Build.MODEL);
                     fields.put("android", Build.VERSION.RELEASE + " / API " + Build.VERSION.SDK_INT);
@@ -1752,7 +1769,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 }
 
                 String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-                String fileName = "MK15_Report_" + ts + "_v1.5.0.zip";
+                String fileName = "MK15_Report_" + ts + "_v1.5.1.zip";
 
                 File base = getExternalFilesDir(null);
                 if (base == null) base = getFilesDir();
@@ -1830,7 +1847,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             String reason, String status, String sa, String fileName) {
         return "report_format=2\n"
                 + "app=MK15 Port Inspector\n"
-                + "app_version=1.5.0\n"
+                + "app_version=1.5.1\n"
                 + "package=" + getPackageName() + "\n"
                 + "created_at=" + new SimpleDateFormat(
                         "yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(new Date()) + "\n"
@@ -1857,7 +1874,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
     private String buildReportReadme() {
         return "MK15 Port Inspector diagnostic report ZIP\n\n"
-                + "Created entirely on the MK15 without ADB. Version 1.5.0 configures official UART0 (/dev/ttyHS0) to 115200 raw before SDK probing.\n"
+                + "Created entirely on the MK15 without ADB. Version 1.5.1 configures official UART0 (/dev/ttyHS0) to 115200 raw before SDK probing.\n"
                 + "The working ZIP is kept under the app external files/reports directory.\n"
                 + "ZIP → Download copies it to Download/MK15PortInspector for File Explorer and adb pull.\n"
                 + "ZIP → флешка/файл opens Android's file picker; select a USB flash drive if it is mounted.\n"
@@ -2038,7 +2055,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             if (!dir.exists()) dir.mkdirs();
             runtimeLogFile = new File(dir, "MK15_PortInspector_runtime.log");
             try (FileWriter fw = new FileWriter(runtimeLogFile, false)) {
-                fw.write("MK15 Port Inspector 1.5.0 runtime log\n");
+                fw.write("MK15 Port Inspector 1.5.1 runtime log\n");
                 fw.write("Started: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date()) + "\n");
                 fw.write("Path: " + runtimeLogFile.getAbsolutePath() + "\n\n");
             }
