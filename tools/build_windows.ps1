@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 $Root = Split-Path -Parent $PSScriptRoot
 $OutDir = Join-Path $Root 'out'
 $ApkSource = Join-Path $Root 'app\build\outputs\apk\debug\app-debug.apk'
-$ApkTarget = Join-Path $OutDir 'MK15PortInspector-1.5.4-debug.apk'
+$ApkTarget = Join-Path $OutDir 'MK15PortInspector-1.5.5-debug.apk'
 $AarSource = Join-Path $Root 'mk15-sdk\build\outputs\aar\mk15-sdk-release.aar'
 $AarTarget = Join-Path $OutDir 'MK15-CD-SDK-1.0.0.aar'
 $ToolsDir = Join-Path $Root '.tools'
