@@ -3,8 +3,18 @@ name: Windows APK build
 on:
   push:
     branches: [ "main" ]
-    paths-ignore:
-      - "runs/**"
+    paths:
+      - ".github/workflows/windows-build.yml"
+      - "app/**"
+      - "mk15-sdk/**"
+      - "host-tests/**"
+      - "tools/**"
+      - "build.gradle"
+      - "settings.gradle"
+      - "gradle.properties"
+      - "BUILD_WINDOWS.bat"
+      - "RUN_PROTOCOL_SELFTEST.bat"
+      - "PUBLISH_LAST_RUN.bat"
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
