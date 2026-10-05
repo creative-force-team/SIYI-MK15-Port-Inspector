@@ -205,7 +205,8 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
         LinearLayout researchPanel = new LinearLayout(this);
         researchPanel.setOrientation(LinearLayout.VERTICAL);
-        researchPanel.setPadding(0, dp(4), 0, dp(8));\n        researchPanel.setBackgroundColor(Color.rgb(232, 245, 233));
+        researchPanel.setPadding(0, dp(4), 0, dp(8));
+        researchPanel.setBackgroundColor(Color.rgb(232, 245, 233));
 
         researchPanel.addView(
                 button("1. ЗАПУСТИТЬ ИССЛЕДОВАНИЕ", v -> startControlsResearch()),
