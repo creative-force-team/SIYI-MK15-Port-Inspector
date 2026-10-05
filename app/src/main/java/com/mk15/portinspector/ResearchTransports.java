@@ -521,10 +521,14 @@ public final class ResearchTransports {
 
     private void recordRx(Session session, byte[] data, int len) {
         session.rxBytes.addAndGet(len);
-        session.rxChunks.incrementAndGet();
-        byte[] shown = data;
-        if (shown.length > 96) shown = Arrays.copyOf(shown, 96);
-        session.lastHex = SiyiProtocol.hex(shown) + (len > shown.length ? " ..." : "");
+        long chunks = session.rxChunks.incrementAndGet();
+        // Formatting every 20 Hz RC packet into hex is expensive on MK15 and is
+        // diagnostic-only. Keep an early sample and then one fresh sample/sec.
+        if (chunks <= 4 || (chunks % 20) == 0) {
+            byte[] shown = data;
+            if (shown.length > 96) shown = Arrays.copyOf(shown, 96);
+            session.lastHex = SiyiProtocol.hex(shown) + (len > shown.length ? " ..." : "");
+        }
     }
 
     private void info(String source, String message) {
