@@ -180,7 +180,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         setContentView(buildUi());
         initRuntimeLog();
         applyDefaultMappingPreview();
-        appendLog("MK15 Port Inspector 1.5.2 запущен.");
+        appendLog("MK15 Port Inspector 1.5.3 запущен.");
         appendLog("Цель текущего исследования: полный пассивный инвентарь физических органов управления MK15.");
         appendLog("Режим исследования поддерживает USB COM, UDP, Bluetooth SPP, native ttyHS0, ttyHS1/2 и Android Input.");
         appendLog("Важно: активный поток 0x42 использует тот же канал связи, что телеметрия. Проверять только на столе, не в полёте.");
@@ -1316,7 +1316,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 runOnUiThread(() -> {
                     finderText.setBackgroundColor(Color.rgb(255, 224, 178));
                     finderText.setText("Нет ответа SIYI SDK. Откройте SIYI TX → Datalink и проверьте Connection. "
-                            + "Для UART используйте /dev/ttyHS0; приложение 1.5.2 настраивает его после открытия на 115200 raw. "
+                            + "Для UART используйте /dev/ttyHS0; приложение 1.5.3 настраивает его после открытия на 115200 raw. "
                             + "После смены Connection снова нажмите «АВТОПОИСК C/D (20 Гц)».");
                 });
             }
@@ -1445,7 +1445,9 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
     private void handleSiyiFrame(String source, SiyiProtocol.Frame frame) {
         validSiyiFrames++;
-        if (validSiyiFrames <= 40 || (validSiyiFrames % 100) == 0 || frame.ttyCaseRepaired) {
+        // A 20 Hz RC stream must not flood the main thread with diagnostic text.
+        // Keep enough early frames for diagnosis, then log only sparse checkpoints.
+        if (validSiyiFrames <= 8 || (validSiyiFrames % 100) == 0 || frame.ttyCaseRepaired) {
             appendLog("SIYI " + source + " frame #" + validSiyiFrames + " cmd=0x"
                     + String.format(Locale.US, "%02X", frame.cmdId)
                     + " seq=" + frame.seq + " dataLen=" + frame.data.length
@@ -1495,34 +1497,41 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         lastRcSource = source;
 
         final long researchNow = System.currentTimeMillis();
+        final long frameNumber = channelFrameCount;
         if (controlsResearchActive) {
+            // Every 20 Hz frame is still recorded by the research model.
             controlsResearch.onChannels(values, researchNow);
         }
 
-        runOnUiThread(() -> {
-            for (int i = 0; i < CHANNEL_COUNT; i++) {
-                if (controlsResearchActive) {
-                    updateResearchChannelRow(i, researchNow);
-                } else {
-                    String name = mappedName(i);
-                    boolean isSa = i == saChannelIndex;
-                    updateChannelRow(i, name, values[i], isSa);
+        // Rendering 16 rows at 20 Hz can queue hundreds of TextView updates per second
+        // and delay report callbacks after a long experiment. Keep data ingestion at
+        // full rate but render at 5 Hz after the first few frames.
+        if (frameNumber <= 4 || (frameNumber % 4) == 0) {
+            runOnUiThread(() -> {
+                for (int i = 0; i < CHANNEL_COUNT; i++) {
+                    if (controlsResearchActive) {
+                        updateResearchChannelRow(i, researchNow);
+                    } else {
+                        String name = mappedName(i);
+                        boolean isSa = i == saChannelIndex;
+                        updateChannelRow(i, name, values[i], isSa);
+                    }
                 }
-            }
-            int saValue = saChannelIndex >= 0 && saChannelIndex < CHANNEL_COUNT ? values[saChannelIndex] : -1;
-            String mappingNote = mappingReceived ? "mapping 0x48 подтверждён" : "mapping пока заводской";
-            String cState = rcButtonState(values[9]);
-            String dState = rcButtonState(values[10]);
-            saText.setText("Живые RC [" + source + "]: C/CH10=" + values[9] + " (" + cState + ")"
-                    + "  D/CH11=" + values[10] + " (" + dState + ")"
-                    + "  SA/CH" + (saChannelIndex + 1) + "=" + saValue
-                    + " (" + mappingNote + ")");
-            if (channelFrameCount <= 12 || (channelFrameCount % 20) == 0) {
-                appendLog("RC LIVE #" + channelFrameCount + " [" + source + "] C/CH10="
-                        + values[9] + " D/CH11=" + values[10]);
-            }
-            saText.setBackgroundColor(Color.rgb(200, 230, 201));
-        });
+                int saValue = saChannelIndex >= 0 && saChannelIndex < CHANNEL_COUNT ? values[saChannelIndex] : -1;
+                String mappingNote = mappingReceived ? "mapping 0x48 подтверждён" : "mapping пока заводской";
+                String cState = rcButtonState(values[9]);
+                String dState = rcButtonState(values[10]);
+                saText.setText("Живые RC [" + source + "]: C/CH10=" + values[9] + " (" + cState + ")"
+                        + "  D/CH11=" + values[10] + " (" + dState + ")"
+                        + "  SA/CH" + (saChannelIndex + 1) + "=" + saValue
+                        + " (" + mappingNote + ")");
+                if (frameNumber <= 12 || (frameNumber % 20) == 0) {
+                    appendLog("RC LIVE #" + frameNumber + " [" + source + "] C/CH10="
+                            + values[9] + " D/CH11=" + values[10]);
+                }
+                saText.setBackgroundColor(Color.rgb(200, 230, 201));
+            });
+        }
     }
 
     private void handleMappingFrame(byte[] data) {
@@ -1697,7 +1706,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 try {
                     Map<String, String> fields = new LinkedHashMap<>();
                     fields.put("report_id", zip.getName());
-                    fields.put("app_version", "1.5.2");
+                    fields.put("app_version", "1.5.3");
                     fields.put("package", getPackageName());
                     fields.put("device", Build.MANUFACTURER + " " + Build.MODEL);
                     fields.put("android", Build.VERSION.RELEASE + " / API " + Build.VERSION.SDK_INT);
@@ -1771,7 +1780,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 }
 
                 String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-                String fileName = "MK15_Report_" + ts + "_v1.5.2.zip";
+                String fileName = "MK15_Report_" + ts + "_v1.5.3.zip";
 
                 File base = getExternalFilesDir(null);
                 if (base == null) base = getFilesDir();
@@ -1849,7 +1858,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             String reason, String status, String sa, String fileName) {
         return "report_format=2\n"
                 + "app=MK15 Port Inspector\n"
-                + "app_version=1.5.2\n"
+                + "app_version=1.5.3\n"
                 + "package=" + getPackageName() + "\n"
                 + "created_at=" + new SimpleDateFormat(
                         "yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(new Date()) + "\n"
@@ -1876,7 +1885,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
     private String buildReportReadme() {
         return "MK15 Port Inspector diagnostic report ZIP\n\n"
-                + "Created entirely on the MK15 without ADB. Version 1.5.2 configures official UART0 (/dev/ttyHS0) to 115200 raw before SDK probing.\n"
+                + "Created entirely on the MK15 without ADB. Version 1.5.3 configures official UART0 (/dev/ttyHS0) to 115200 raw before SDK probing.\n"
                 + "The working ZIP is kept under the app external files/reports directory.\n"
                 + "ZIP → Download copies it to Download/MK15PortInspector for File Explorer and adb pull.\n"
                 + "ZIP → флешка/файл opens Android's file picker; select a USB flash drive if it is mounted.\n"
@@ -2057,7 +2066,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             if (!dir.exists()) dir.mkdirs();
             runtimeLogFile = new File(dir, "MK15_PortInspector_runtime.log");
             try (FileWriter fw = new FileWriter(runtimeLogFile, false)) {
-                fw.write("MK15 Port Inspector 1.5.2 runtime log\n");
+                fw.write("MK15 Port Inspector 1.5.3 runtime log\n");
                 fw.write("Started: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date()) + "\n");
                 fw.write("Path: " + runtimeLogFile.getAbsolutePath() + "\n\n");
             }
