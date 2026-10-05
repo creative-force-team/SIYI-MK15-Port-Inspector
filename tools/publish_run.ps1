@@ -36,7 +36,7 @@ Log-Line ('Publishing diagnostics for ' + $RunId + ' type=' + $RunType + ' resul
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 
 $ApkCandidates = @(
-    (Join-Path $Root 'out\MK15PortInspector-1.5.0-debug.apk'),
+    (Join-Path $Root 'out\MK15PortInspector-1.5.1-debug.apk'),
     (Join-Path $Root 'app\build\outputs\apk\debug\app-debug.apk')
 )
 
@@ -50,7 +50,7 @@ foreach ($Apk in $ApkCandidates) {
     if (Test-Path $Apk) {
         $Name = Split-Path -Leaf $Apk
         if ($Name -eq 'app-debug.apk') {
-            $Name = 'MK15PortInspector-1.5.0-debug.apk'
+            $Name = 'MK15PortInspector-1.5.1-debug.apk'
         }
         $Destination = Join-Path $ArtifactDir $Name
         Copy-Item -Force $Apk $Destination
