@@ -108,7 +108,7 @@ public final class ReportTools {
         connection.setInstanceFollowRedirects(true);
         connection.setChunkedStreamingMode(16384);
         connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-        connection.setRequestProperty("User-Agent", "MK15-Port-Inspector/1.5.2");
+        connection.setRequestProperty("User-Agent", "MK15-Port-Inspector/1.5.3");
         connection.setRequestProperty("Accept", "application/json, text/plain, */*");
 
         try (OutputStream out = connection.getOutputStream()) {
