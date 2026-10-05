@@ -2,7 +2,7 @@
 
 Diagnostic Android application for SIYI MK15. The completed C/D research identified the working Datalink UART and verified the exact channels and live values of the physical C and D buttons. The application remains a reusable inspector for further MK15 interface research.
 
-Current version: 1.5.2.
+Current version: 1.5.3.
 
 ## Repository workflow
 
@@ -43,7 +43,7 @@ The script:
 
 The build output is also copied to:
 
-    out\MK15PortInspector-1.5.2-debug.apk
+    out\MK15PortInspector-1.5.3-debug.apk
 
 If automatic upload fails because of network, Git authentication, a remote update, or unrelated local changes, the run directory and local diagnostic commit are preserved. Retry with:
 
@@ -327,3 +327,12 @@ ZIP-отчёт дополнен:
 Подробности и границы доказанности: `docs/MK15_UI_DEBUG_2026-10-05.md`.
 
 Важно: геометрия начального экрана подтверждена; полный интерактивный проход «исследование → запись → ZIP → отправка» должен быть завершён отдельно. До этого повторную физическую серию оператору проводить не требуется.
+
+
+## UI responsiveness fix 1.5.3
+
+Аппаратная проверка 1.5.2 на реальном SIYI MK15 подтвердила корректный приём RC 20 Гц, запись опыта и формирование ZIP, но выявила избыточную нагрузку интерфейса: каждая рамка 0x42 инициировала перерисовку всех 16 строк каналов.
+
+Версия 1.5.3 сохраняет обработку и запись **каждого** RC-кадра на 20 Гц, но ограничивает визуальную перерисовку таблицы примерно 5 Гц после первых кадров. Это не уменьшает точность исследования; изменение разгружает главный поток Android, чтобы кнопки, переходы и завершение отчёта не ждали длинную очередь обновлений интерфейса.
+
+Причина обнаружена в полном программном цикле на реальном пульте после подтверждённых этапов: UART0 mapping 0x48, поток 0x42 20 Гц, BEGIN/END контрольного опыта C и HCR 0x42 OFF. Сформированный 1.5.2 ZIP был отдельно извлечён и успешно проверен по JSON, CSV, Markdown, mapping и runtime-журналу.
