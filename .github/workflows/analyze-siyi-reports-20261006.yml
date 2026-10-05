@@ -1,0 +1,190 @@
+name: Analyze SIYI reports 2026-10-06
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/analyze-siyi-reports-20261006.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: [self-hosted, cf-node-online-finland]
+    timeout-minutes: 10
+    steps:
+      - name: Notify start
+        shell: bash
+        run: |
+          set -u
+          u(){ python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
+          T='[SIYI MK15 Port Inspector] Разбираю новые сигналы с пульта'
+          M='Получены четыре отчёта 1.5.5. На Finland сначала добавляю защитное расширение .zip, затем проверяю архивы и сопоставляю фактические физические опыты между собой.'
+          curl -fsS --max-time 15 "https://thesystem.pro/?action=tg_Notify&Title=$(u "$T")&To=-1002159555744&Message=$(u "$M")&Progress=0.875" >/dev/null 2>&1 || true
+
+      - name: Rename protected files before reading and analyze
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='/var/www/thesystem/data/siyi_reports'
+          test -d "$ROOT"
+          names=(
+            'MK15_Report_20261006_014327_v1_5_5_zip'
+            'MK15_Report_20261006_024656_v1_5_5_zip'
+            'MK15_Report_20261006_024738_v1_5_5_zip'
+            'MK15_Report_20261006_024916_v1_5_5_zip'
+          )
+
+          # First perform only the explicitly authorized rename. Do not open/read file contents
+          # until every target has a .zip suffix.
+          for base in "${names[@]}"; do
+            src="$ROOT/$base"
+            dst="$ROOT/$base.zip"
+            if [ -f "$src" ]; then
+              if [ -e "$dst" ]; then
+                echo "RENAME_CONFLICT $base"
+                exit 31
+              fi
+              mv -- "$src" "$dst"
+              echo "RENAMED $base -> $base.zip"
+            elif [ -f "$dst" ]; then
+              echo "ALREADY_RENAMED $base.zip"
+            else
+              echo "MISSING $base"
+            fi
+          done
+
+          OUT="$RUNNER_TEMP/siyi-report-analysis-$GITHUB_RUN_ID"
+          mkdir -p "$OUT"
+
+          python3 - "$ROOT" "$OUT" "${names[@]}" <<'PY'
+          import csv, hashlib, io, json, os, sys, zipfile
+          from collections import Counter, defaultdict
+
+          root=sys.argv[1]
+          out=sys.argv[2]
+          names=sys.argv[3:]
+
+          def text(z,n):
+              try:
+                  return z.read(n).decode('utf-8-sig',errors='replace')
+              except KeyError:
+                  return None
+
+          def compact_control(c):
+              return {
+                  "number":c.get("number"),
+                  "physical_label":c.get("physical_label"),
+                  "kind":c.get("kind"),
+                  "classification":c.get("classification"),
+                  "started_ms":c.get("started_ms"),
+                  "finished_ms":c.get("finished_ms"),
+                  "candidate_channels":c.get("candidate_channels",[]),
+              }
+
+          all_reports=[]
+          for base in names:
+              p=os.path.join(root,base+'.zip')
+              if not os.path.isfile(p):
+                  all_reports.append({"file":base+".zip","missing":True})
+                  print("REPORT_MISSING",base+'.zip')
+                  continue
+              raw=open(p,'rb').read()
+              sha=hashlib.sha256(raw).hexdigest()
+              rec={"file":os.path.basename(p),"size":len(raw),"sha256":sha}
+              try:
+                  with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                      bad=z.testzip()
+                      if bad:
+                          raise RuntimeError("bad member: "+bad)
+                      rec["entries"]=z.namelist()
+
+                      cj=text(z,'controls.json')
+                      controls=[]
+                      if cj:
+                          data=json.loads(cj)
+                          controls=data.get('controls',[]) if isinstance(data,dict) else data
+                      rec["controls"]=[compact_control(c) for c in controls]
+
+                      ev=text(z,'events.csv') or ''
+                      rows=list(csv.DictReader(io.StringIO(ev))) if ev.strip() else []
+                      rec["event_count"]=len(rows)
+                      by_exp=defaultdict(lambda: defaultdict(lambda: {
+                          "count":0,"values":[],"transitions":Counter()
+                      }))
+                      for r in rows:
+                          ex=str(r.get('experiment',''))
+                          ch=str(r.get('channel',''))
+                          d=by_exp[ex][ch]
+                          d["count"]+=1
+                          try:d["values"].append(int(r.get('raw_value','')))
+                          except:pass
+                          d["transitions"][(r.get('previous_value',''),r.get('raw_value',''))]+=1
+                      evsum={}
+                      for ex,chs in by_exp.items():
+                          evsum[ex]={}
+                          for ch,d in chs.items():
+                              vals=d["values"]
+                              evsum[ex][ch]={
+                                  "count":d["count"],
+                                  "min":min(vals) if vals else None,
+                                  "max":max(vals) if vals else None,
+                                  "distinct":sorted(set(vals)),
+                                  "top_transitions":[
+                                      {"from":a,"to":b,"count":n}
+                                      for (a,b),n in d["transitions"].most_common(12)
+                                  ]
+                              }
+                      rec["events_by_experiment"]=evsum
+                      rec["mapping_raw"]=text(z,'mapping_raw.txt')
+                      rec["summary_md"]=text(z,'SUMMARY.md')
+                      rec["summary_txt"]=text(z,'summary.txt')
+                      session=text(z,'logs/session.log') or ''
+                      rec["session_tail"]='\n'.join(session.splitlines()[-80:])
+                      runtime=text(z,'logs/runtime.log') or ''
+                      rec["runtime_tail"]='\n'.join(runtime.splitlines()[-80:])
+              except Exception as e:
+                  rec["zip_error"]=repr(e)
+
+              all_reports.append(rec)
+              print("REPORT_BEGIN",rec["file"])
+              print("IDENTITY",json.dumps({k:rec.get(k) for k in ("size","sha256","event_count","zip_error")},ensure_ascii=False))
+              for c in rec.get("controls",[]):
+                  print("CONTROL",json.dumps(c,ensure_ascii=False,separators=(',',':')))
+              print("EVENTS",json.dumps(rec.get("events_by_experiment",{}),ensure_ascii=False,separators=(',',':')))
+              print("MAPPING_BEGIN")
+              print((rec.get("mapping_raw") or '').strip())
+              print("MAPPING_END")
+              print("SUMMARY_BEGIN")
+              print((rec.get("summary_md") or '').strip())
+              print("SUMMARY_END")
+              print("SESSION_TAIL_BEGIN")
+              print((rec.get("session_tail") or '').strip())
+              print("SESSION_TAIL_END")
+              print("REPORT_END",rec["file"])
+
+          with open(os.path.join(out,'analysis.json'),'w',encoding='utf-8') as f:
+              json.dump(all_reports,f,ensure_ascii=False,indent=2)
+          print("ANALYSIS_JSON",os.path.join(out,'analysis.json'))
+          PY
+
+      - name: Notify parsed
+        if: success()
+        shell: bash
+        run: |
+          set -u
+          u(){ python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
+          T='[SIYI MK15 Port Inspector] Архивы прочитаны'
+          M='Новые отчёты 1.5.5 на Finland переименованы с добавлением .zip, целостность проверена, физические опыты и события извлечены. Сейчас свожу каналы и повторяемость между сериями.'
+          curl -fsS --max-time 15 "https://thesystem.pro/?action=tg_Notify&Title=$(u "$T")&To=-1002159555744&Message=$(u "$M")&Progress=0.875" >/dev/null 2>&1 || true
+
+      - name: Notify failure
+        if: failure()
+        shell: bash
+        run: |
+          set -u
+          u(){ python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
+          T='[SIYI MK15 Port Inspector] Разбор отчётов остановлен'
+          M='На Finland обнаружена конкретная проблема при переименовании или проверке новых архивов. Файлы не интерпретирую до устранения причины.'
+          curl -fsS --max-time 15 "https://thesystem.pro/?action=tg_Notify&Title=$(u "$T")&To=-1002159555744&Message=$(u "$M")&Progress=0.875&final=1" >/dev/null 2>&1 || true
