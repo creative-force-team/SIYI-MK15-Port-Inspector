@@ -281,6 +281,18 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         researchPanel.addView(researchActionRow, lpMatchWrap());
+
+        LinearLayout researchReportRow = new LinearLayout(this);
+        researchReportRow.setOrientation(LinearLayout.HORIZONTAL);
+        researchReportRow.setGravity(Gravity.CENTER_VERTICAL);
+        researchReportRow.addView(
+                button("4. ZIP → thesystem", v -> uploadReportToThesystem()),
+                new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.62f));
+        researchReportRow.addView(
+                button("Резерв: ZIP → Download", v -> saveReportToDownloads()),
+                new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.38f));
+        researchPanel.addView(researchReportRow, lpMatchWrap());
+
         root.addView(researchPanel, lpMatchWrap());
 
         controlsResearchText = text(
@@ -1172,7 +1184,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             controlsResearchText.setText(
                     "Опыт №" + result.number + " завершён: " + result.physicalLabel
                             + ". Изменявшиеся каналы: " + candidates
-                            + ". Выберите следующий орган или сформируйте ZIP-отчёт.");
+                            + ". Выберите следующий орган или после всей серии нажмите «4. ZIP → thesystem».");
         } catch (Throwable t) {
             appendLog("Hardware Controls Research: finish failed — " + stackSummary(t));
         }
@@ -1695,6 +1707,8 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
     private void uploadReportToThesystem() {
         buildReportAsync("upload-to-thesystem", zip -> {
             reportText.setText("Отчёт: отправляю " + zip.getName() + " в thesystem…");
+            controlsResearchText.setBackgroundColor(Color.rgb(255, 248, 225));
+            controlsResearchText.setText("Шаг 4: отправляю ZIP-отчёт в thesystem…");
             worker.submit(() -> {
                 try {
                     Map<String, String> fields = new LinkedHashMap<>();
@@ -1724,11 +1738,20 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                             reportText.setText("Отчёт отправлен в thesystem: HTTP "
                                     + result.statusCode
                                     + (visibleResponse.isEmpty() ? "" : " — " + visibleResponse));
+                            controlsResearchText.setBackgroundColor(Color.rgb(200, 230, 201));
+                            controlsResearchText.setText(
+                                    "ГОТОВО: ZIP-отчёт принят thesystem (HTTP " + result.statusCode
+                                            + "). Исследование остановлено; миссия на пульте завершена.");
+                            stopControlsResearch(false);
                         } else {
                             reportText.setBackgroundColor(Color.rgb(255, 224, 178));
                             reportText.setText("thesystem не принял отчёт: HTTP "
                                     + result.statusCode
                                     + (visibleResponse.isEmpty() ? "" : " — " + visibleResponse));
+                            controlsResearchText.setBackgroundColor(Color.rgb(255, 224, 178));
+                            controlsResearchText.setText(
+                                    "thesystem не принял ZIP (HTTP " + result.statusCode
+                                            + "). Используйте «Резерв: ZIP → Download» и передайте файл.");
                         }
                     });
                 } catch (Throwable t) {
@@ -1736,6 +1759,9 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                     runOnUiThread(() -> {
                         reportText.setBackgroundColor(Color.rgb(255, 205, 210));
                         reportText.setText("Ошибка отправки в thesystem: " + stackSummary(t));
+                        controlsResearchText.setBackgroundColor(Color.rgb(255, 205, 210));
+                        controlsResearchText.setText(
+                                "Ошибка отправки ZIP в thesystem. Используйте «Резерв: ZIP → Download» и передайте файл.");
                     });
                 }
             });
