@@ -10,8 +10,8 @@ android {
         applicationId 'com.mk15.portinspector'
         minSdk 23
         targetSdk 28
-        versionCode 53
-        versionName '1.5.3'
+        versionCode 54
+        versionName '1.5.4'
     }
 
     sourceSets {
