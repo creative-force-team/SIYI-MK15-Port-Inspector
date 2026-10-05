@@ -2,7 +2,7 @@
 
 Diagnostic Android application for SIYI MK15. The completed C/D research identified the working Datalink UART and verified the exact channels and live values of the physical C and D buttons. The application remains a reusable inspector for further MK15 interface research.
 
-Current version: 1.5.4.
+Current version: 1.5.5.
 
 ## Repository workflow
 
@@ -43,7 +43,7 @@ The script:
 
 The build output is also copied to:
 
-    out\MK15PortInspector-1.5.4-debug.apk
+    out\MK15PortInspector-1.5.5-debug.apk
 
 If automatic upload fails because of network, Git authentication, a remote update, or unrelated local changes, the run directory and local diagnostic commit are preserved. Retry with:
 
@@ -343,3 +343,10 @@ ZIP-отчёт дополнен:
 Аппаратная проверка 1.5.3 на реальном MK15 показала, что сохранения всех RC-кадров на 20 Гц и визуальной перерисовки таблицы примерно на 5 Гц всё ещё недостаточно для слабого Android-пульта: во время активного потока процесс занимал около половины одного ядра, а Android UI Automation не мог устойчиво получить дерево интерфейса. Сразу после «Стоп» дерево снова становилось доступно.
 
 Версия 1.5.4 **не снижает частоту приёма и записи данных**: Hardware Controls Research по-прежнему получает каждый кадр RC 20 Гц. Ограничена только визуальная перерисовка 16 строк таблицы — после короткой стартовой серии экран обновляется примерно 1 раз в секунду. Для оператора этого достаточно, а точность измерения остаётся прежней.
+
+
+## UI responsiveness fix 1.5.5
+
+Проверка 1.5.4 показала, что снижение визуального обновления таблицы до 1 Гц почти не изменило нагрузку: активный процесс на реальном MK15 оставался около 43% одного ядра, а Android UI Automation не мог получить дерево экрана до остановки RC-потока.
+
+Анализ выявил диагностический путь, работавший на каждом 20-Гц кадре UART0 с IUCLC: сообщение о сигнатуре `75 66`, отдельное логирование каждого восстановленного кадра, формирование `lastHex` через `String.format` и полная перерисовка текстового журнала. В 1.5.5 эти операции разрежены. Приём RC, модель Hardware Controls Research и запись каждого кадра по-прежнему работают на исходной частоте 20 Гц.
