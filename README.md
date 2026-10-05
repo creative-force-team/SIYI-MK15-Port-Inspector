@@ -2,7 +2,7 @@
 
 Diagnostic Android application for SIYI MK15. The completed C/D research identified the working Datalink UART and verified the exact channels and live values of the physical C and D buttons. The application remains a reusable inspector for further MK15 interface research.
 
-Current version: 1.5.0.
+Current version: 1.5.2.
 
 ## Repository workflow
 
@@ -310,3 +310,10 @@ ZIP-отчёт дополнен:
 Инструкция оператору: `docs/HARDWARE_CONTROLS_RESEARCH_1.5.0.md`.
 
 Назначение HOLD/RTH/MANUAL в рамках этой версии не выполняется: сначала собираются фактические аппаратные измерения.
+
+
+## UI visibility fix 1.5.2
+
+Проверка версии 1.5.1 на реальном MK15 показала, что одного отказа от горизонтальной прокрутки недостаточно: первая кнопка исследования стала видна, но строка выбора и кнопки записи начинались у нижней границы рабочего окна.
+
+Версия 1.5.2 переносит весь рабочий блок Hardware Controls Research непосредственно под заголовок приложения. Оператор сразу видит запуск исследования, выбор органа и действия «Начать запись», «Завершить запись», «Остановить исследование»; сетевые и диагностические элементы располагаются ниже.
