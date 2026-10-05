@@ -2,7 +2,7 @@
 
 Diagnostic Android application for SIYI MK15. The completed C/D research identified the working Datalink UART and verified the exact channels and live values of the physical C and D buttons. The application remains a reusable inspector for further MK15 interface research.
 
-Current version: 1.5.3.
+Current version: 1.5.4.
 
 ## Repository workflow
 
@@ -43,7 +43,7 @@ The script:
 
 The build output is also copied to:
 
-    out\MK15PortInspector-1.5.3-debug.apk
+    out\MK15PortInspector-1.5.4-debug.apk
 
 If automatic upload fails because of network, Git authentication, a remote update, or unrelated local changes, the run directory and local diagnostic commit are preserved. Retry with:
 
@@ -336,3 +336,10 @@ ZIP-отчёт дополнен:
 Версия 1.5.3 сохраняет обработку и запись **каждого** RC-кадра на 20 Гц, но ограничивает визуальную перерисовку таблицы примерно 5 Гц после первых кадров. Это не уменьшает точность исследования; изменение разгружает главный поток Android, чтобы кнопки, переходы и завершение отчёта не ждали длинную очередь обновлений интерфейса.
 
 Причина обнаружена в полном программном цикле на реальном пульте после подтверждённых этапов: UART0 mapping 0x48, поток 0x42 20 Гц, BEGIN/END контрольного опыта C и HCR 0x42 OFF. Сформированный 1.5.2 ZIP был отдельно извлечён и успешно проверен по JSON, CSV, Markdown, mapping и runtime-журналу.
+
+
+## UI responsiveness fix 1.5.4
+
+Аппаратная проверка 1.5.3 на реальном MK15 показала, что сохранения всех RC-кадров на 20 Гц и визуальной перерисовки таблицы примерно на 5 Гц всё ещё недостаточно для слабого Android-пульта: во время активного потока процесс занимал около половины одного ядра, а Android UI Automation не мог устойчиво получить дерево интерфейса. Сразу после «Стоп» дерево снова становилось доступно.
+
+Версия 1.5.4 **не снижает частоту приёма и записи данных**: Hardware Controls Research по-прежнему получает каждый кадр RC 20 Гц. Ограничена только визуальная перерисовка 16 строк таблицы — после короткой стартовой серии экран обновляется примерно 1 раз в секунду. Для оператора этого достаточно, а точность измерения остаётся прежней.
