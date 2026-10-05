@@ -228,6 +228,8 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 android.R.layout.simple_spinner_item, researchLabels);
         labelAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         controlLabelSpinner.setAdapter(labelAdapter);
+        // The operator mission starts with the already verified C button as a control sample.
+        controlLabelSpinner.setSelection(7);
         researchSelectorRow.addView(controlLabelSpinner,
                 new LinearLayout.LayoutParams(dp(145), LinearLayout.LayoutParams.WRAP_CONTENT));
 
@@ -281,7 +283,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         root.addView(researchPanel, lpMatchWrap());
 
         controlsResearchText = text(
-                "Исследование органов управления не запущено. Режим читает только SIYI mapping 0x48 и RC-каналы 0x42; конфигурацию пульта не изменяет.",
+                "Шаг 1: нажмите «1. ЗАПУСТИТЬ ИССЛЕДОВАНИЕ». По умолчанию выбран контрольный орган C. Режим только читает SIYI mapping 0x48 и RC-каналы 0x42.",
                 14, true);
         controlsResearchText.setPadding(dp(8), dp(4), dp(8), dp(4));
         controlsResearchText.setBackgroundColor(Color.rgb(232, 245, 233));
@@ -1054,8 +1056,8 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                     setStatus("Исследование органов: UART0, RC 20 Гц");
                     controlsResearchText.setBackgroundColor(Color.rgb(200, 230, 201));
                     controlsResearchText.setText(
-                            "Исследование запущено. Дождитесь живых значений, выберите один физический орган, "
-                                    + "нажмите «Начать запись органа», выполните не менее 5 циклов и завершите запись.");
+                            "Исследование запущено. Дождитесь живых значений. Шаг 2: нажмите «2. Начать запись», "
+                                    + "выполните не менее 5 циклов выбранного органа и нажмите «3. Завершить запись».");
                 } else {
                     controlsResearchText.setBackgroundColor(Color.rgb(255, 205, 210));
                     controlsResearchText.setText(
@@ -1120,7 +1122,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
     private void beginControlExperiment() {
         if (!controlsResearchActive) {
             Toast.makeText(this,
-                    "Сначала нажмите «Исследование органов управления».",
+                    "Сначала нажмите «1. ЗАПУСТИТЬ ИССЛЕДОВАНИЕ».",
                     Toast.LENGTH_LONG).show();
             return;
         }
