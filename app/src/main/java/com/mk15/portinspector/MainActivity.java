@@ -876,6 +876,9 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         out.put("transport.usb.rxChunks", String.valueOf(usbRxChunks));
         out.put("transport.usb.txBytes", String.valueOf(usbTxBytes));
         out.put("transport.usb.lastHex", usbLastHex);
+        out.put("rc.uart0.channelFrameCount", String.valueOf(uart0ChannelFrameCount.get()));
+        out.put("rc.residualStreamObserved", String.valueOf(residualRcStreamObserved));
+        out.put("rc.requestedFrequencyHz", String.valueOf(RESEARCH_RC_FREQUENCY_HZ));
 
         if (researchTransports != null) out.putAll(researchTransports.snapshot());
         out.putAll(rcActivity.snapshot());
@@ -1522,19 +1525,45 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         if (userInitiated) finderActive = false;
         if (!hasAnyWritableTransport()) {
             streamEnabled = false;
+            residualRcStreamObserved = false;
             if (userInitiated) appendLog("RC: нет подключённого записываемого транспорта.");
             return;
         }
         worker.submit(() -> {
-            int seq = nextSeq();
+            long uartBefore = uart0ChannelFrameCount.get();
             byte[] frame = SiyiProtocol.channelStreamRequest(0, 0);
-            if (userInitiated) appendLog("RC: выключаем поток 0x42 (три отправки).\nTX: " + SiyiProtocol.hex(frame));
+            if (userInitiated) {
+                appendLog("RC: выключаем поток 0x42 (три отправки) и проверяем UART0.\nTX: "
+                        + SiyiProtocol.hex(frame));
+            }
             for (int i = 0; i < 3; i++) {
                 sendSelectedFrame(frame, null);
                 sleepQuiet(60);
             }
-            streamEnabled = false;
-            runOnUiThread(() -> setStatus("RC-поток выключен"));
+
+            boolean stopped = true;
+            if (researchTransports != null
+                    && researchTransports.isWritable(ResearchTransports.UART0)) {
+                sleepQuiet(RC_STOP_VERIFY_MS);
+                long delta = Math.max(0, uart0ChannelFrameCount.get() - uartBefore);
+                if (delta > RC_STOP_MAX_INFLIGHT_FRAMES) {
+                    appendLog("RC manual stop: после общего OFF пришло ещё " + delta
+                            + " UART0 кадров; запускаю проверенный защитный сценарий.");
+                    stopped = stopUart0StreamVerified("manual");
+                } else {
+                    residualRcStreamObserved = false;
+                    streamEnabled = false;
+                    appendLog("RC manual stop: UART0 остановка подтверждена, кадров=" + delta + ".");
+                }
+            } else {
+                streamEnabled = false;
+                residualRcStreamObserved = false;
+            }
+
+            final boolean finalStopped = stopped;
+            runOnUiThread(() -> setStatus(finalStopped
+                    ? "RC-поток выключен и проверен"
+                    : "Остаточный RC-поток ограничен до 4 Гц"));
         });
     }
 
@@ -2012,6 +2041,9 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 + "hardware_research_experiments=" + controlsResearch.completedExperimentCount() + "\n"
                 + "valid_siyi_frames=" + validSiyiFrames + "\n"
                 + "channel_frame_count=" + channelFrameCount + "\n"
+                + "uart0_channel_frame_count=" + uart0ChannelFrameCount.get() + "\n"
+                + "residual_rc_stream_observed=" + residualRcStreamObserved + "\n"
+                + "research_rc_frequency_hz=" + RESEARCH_RC_FREQUENCY_HZ + "\n"
                 + "upload_endpoint=" + REPORT_ENDPOINT + "\n";
     }
 
