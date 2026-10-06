@@ -64,6 +64,10 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
     private static final int REQUEST_CREATE_REPORT_FILE = 3101;
     private static final int REQUEST_WRITE_STORAGE = 3102;
     private static final String REPORT_ENDPOINT = "https://thesystem.pro/?action=siyi_receive";
+    private static final int RESEARCH_RC_FREQUENCY_CODE = 2;
+    private static final int RESEARCH_RC_FREQUENCY_HZ = 4;
+    private static final long RC_STOP_VERIFY_MS = 1400L;
+    private static final int RC_STOP_MAX_INFLIGHT_FRAMES = 1;
     private static final String TRANSPORT_AUTO = "AUTO / все безопасные";
     private static final String TRANSPORT_USB = "USB COM / CP210x";
     private static final String TRANSPORT_UDP = "UDP";
@@ -129,7 +133,10 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
     private String usbLastHex = "";
     private int validSiyiFrames;
     private long uart0IuclcChunkCount;
+    private final AtomicLong uart0ChannelFrameCount = new AtomicLong();
     private final AtomicLong lastVisibleLogUpdateMs = new AtomicLong();
+    private final AtomicLong lastChannelUiUpdateMs = new AtomicLong();
+    private volatile boolean residualRcStreamObserved;
     private int channelFrameCount;
     private String lastRcSource = "none";
 
@@ -182,7 +189,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         setContentView(buildUi());
         initRuntimeLog();
         applyDefaultMappingPreview();
-        appendLog("MK15 Port Inspector 1.5.5 запущен.");
+        appendLog("MK15 Port Inspector 1.5.6 запущен.");
         appendLog("Цель текущего исследования: полный пассивный инвентарь физических органов управления MK15.");
         appendLog("Режим исследования поддерживает USB COM, UDP, Bluetooth SPP, native ttyHS0, ttyHS1/2 и Android Input.");
         appendLog("Важно: активный поток 0x42 использует тот же канал связи, что телеметрия. Проверять только на столе, не в полёте.");
@@ -396,7 +403,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
         LinearLayout finderButtons = new LinearLayout(this);
         finderButtons.setOrientation(LinearLayout.HORIZONTAL);
-        finderButtons.addView(button("АВТОПОИСК C/D (20 Гц)", v -> startActiveFinder()));
+        finderButtons.addView(button("АВТОПОИСК C/D (4 Гц)", v -> startActiveFinder()));
         finderButtons.addView(button("1. Снять базу", v -> captureFinderBaseline("ручная база")));
         finderButtons.addView(button("C → сравнить", v -> compareFinderSnapshot("C")));
         finderButtons.addView(button("D → сравнить", v -> compareFinderSnapshot("D")));
@@ -404,7 +411,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         finderButtons.addView(button("Сброс поиска", v -> resetFinder()));
         root.addView(finderButtons, lpMatchWrap());
 
-        finderText = text("Поиск: AUTO подключится сам. Для кнопок C/D нажмите «АВТОПОИСК C/D (20 Гц)».", 14, true);
+        finderText = text("Поиск: AUTO подключится сам. Для кнопок C/D нажмите «АВТОПОИСК C/D (4 Гц)».", 14, true);
         finderText.setPadding(dp(8), dp(4), dp(8), dp(4));
         finderText.setBackgroundColor(Color.rgb(227, 242, 253));
         root.addView(finderText, lpMatchWrap());
@@ -648,6 +655,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 }
                 try {
                     researchTransports.connectRaw(ResearchTransports.UART0, "/dev/ttyHS0");
+                    normalizeInheritedUart0Stream("AUTO");
                 } catch (Throwable t) {
                     appendLog("AUTO UART0: " + stackSummary(t));
                 }
@@ -686,6 +694,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                     researchTransports.connectBluetoothAsync();
                 } else if (TRANSPORT_UART0.equals(selected)) {
                     researchTransports.connectRaw(ResearchTransports.UART0, "/dev/ttyHS0");
+                    normalizeInheritedUart0Stream("manual UART0");
                 } else if (TRANSPORT_UART1.equals(selected)) {
                     researchTransports.connectRaw(ResearchTransports.UART1, "/dev/ttyHS1");
                 } else if (TRANSPORT_UART2.equals(selected)) {
@@ -1030,9 +1039,9 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
         controlsResearchText.setBackgroundColor(Color.rgb(255, 243, 224));
         controlsResearchText.setText(
-                "Подключаю официальный SIYI UART0, читаю mapping и запускаю поток RC 20 Гц. "
+                "Подключаю официальный SIYI UART0, читаю mapping и запускаю поток RC 4 Гц. "
                         + "Никаких команд полётному контроллеру или изменения mapping приложение не выполняет.");
-        appendLog("Hardware Controls Research: старт; UART0 /dev/ttyHS0, mapping 0x48, RC 20 Гц.");
+        appendLog("Hardware Controls Research: старт; UART0 /dev/ttyHS0, mapping 0x48, RC 4 Гц.");
         connectSelectedTransport();
 
         worker.submit(() -> {
@@ -1043,13 +1052,13 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                     "HCR 0x48 mapping");
             sleepQuiet(350);
 
-            byte[] stream = SiyiProtocol.channelStreamRequest(5, 0);
+            byte[] stream = SiyiProtocol.channelStreamRequest(RESEARCH_RC_FREQUENCY_CODE, 0);
             boolean sent = false;
             for (int i = 0; i < 3; i++) {
                 sent |= sendResearchFrame(
                         ResearchTransports.UART0,
                         stream,
-                        i == 0 ? "HCR 0x42 RC 20Hz" : null);
+                        i == 0 ? "HCR 0x42 RC 4Hz" : null);
                 sleepQuiet(60);
             }
             streamEnabled = sent;
@@ -1058,7 +1067,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             final boolean finalSent = sent;
             runOnUiThread(() -> {
                 if (finalSent) {
-                    setStatus("Исследование органов: UART0, RC 20 Гц");
+                    setStatus("Исследование органов: UART0, RC 4 Гц");
                     controlsResearchText.setBackgroundColor(Color.rgb(200, 230, 201));
                     controlsResearchText.setText(
                             "Исследование запущено. Дождитесь живых значений, выберите один физический орган, "
@@ -1071,7 +1080,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             });
 
             appendLog("Hardware Controls Research: mappingSent=" + finalMappingSent
-                    + " stream20HzSent=" + finalSent);
+                    + " stream4HzSent=" + finalSent);
 
             sleepQuiet(1800);
             if (channelFrameCount <= framesBefore) {
@@ -1084,6 +1093,112 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 });
             }
         });
+    }
+
+    private boolean sendUart0StreamCommand(int frequencyCode, String label) {
+        if (researchTransports == null
+                || !researchTransports.isWritable(ResearchTransports.UART0)) {
+            return false;
+        }
+        byte[] frame = SiyiProtocol.channelStreamRequest(frequencyCode, 0);
+        boolean sent = false;
+        for (int i = 0; i < 3; i++) {
+            sent |= sendResearchFrame(
+                    ResearchTransports.UART0,
+                    frame,
+                    i == 0 ? label : null);
+            sleepQuiet(60);
+        }
+        return sent;
+    }
+
+    private boolean stopUart0StreamVerified(String reason) {
+        if (researchTransports == null
+                || !researchTransports.isWritable(ResearchTransports.UART0)) {
+            residualRcStreamObserved = false;
+            streamEnabled = false;
+            appendLog("RC stop [" + reason + "]: UART0 недоступен, проверить фактическую остановку нельзя.");
+            return false;
+        }
+
+        long before = uart0ChannelFrameCount.get();
+        boolean sent = sendUart0StreamCommand(0, "0x42 OFF [" + reason + "]");
+        if (!sent) {
+            residualRcStreamObserved = true;
+            appendLog("RC stop [" + reason + "]: команда OFF не отправлена.");
+            return false;
+        }
+
+        sleepQuiet(RC_STOP_VERIFY_MS);
+        long after = uart0ChannelFrameCount.get();
+        long firstDelta = Math.max(0, after - before);
+        if (firstDelta <= RC_STOP_MAX_INFLIGHT_FRAMES) {
+            residualRcStreamObserved = false;
+            streamEnabled = false;
+            appendLog("RC stop [" + reason + "]: остановка подтверждена; новых UART0 0x42 кадров="
+                    + firstDelta + ".");
+            return true;
+        }
+
+        appendLog("RC stop [" + reason + "]: OFF не подтверждён, после команды пришло "
+                + firstDelta + " кадров. Ограничиваю поток безопасными 4 Гц и повторяю OFF.");
+
+        sendUart0StreamCommand(
+                RESEARCH_RC_FREQUENCY_CODE,
+                "0x42 SAFE " + RESEARCH_RC_FREQUENCY_HZ + "Hz [" + reason + "]");
+        sleepQuiet(800);
+
+        long retryBase = uart0ChannelFrameCount.get();
+        sendUart0StreamCommand(0, "0x42 OFF retry [" + reason + "]");
+        sleepQuiet(RC_STOP_VERIFY_MS);
+        long finalCount = uart0ChannelFrameCount.get();
+        long retryDelta = Math.max(0, finalCount - retryBase);
+        if (retryDelta <= RC_STOP_MAX_INFLIGHT_FRAMES) {
+            residualRcStreamObserved = false;
+            streamEnabled = false;
+            appendLog("RC stop [" + reason + "]: остановка подтверждена со второй попытки; кадров="
+                    + retryDelta + ".");
+            return true;
+        }
+
+        sendUart0StreamCommand(
+                RESEARCH_RC_FREQUENCY_CODE,
+                "0x42 FALLBACK " + RESEARCH_RC_FREQUENCY_HZ + "Hz [" + reason + "]");
+        residualRcStreamObserved = true;
+        streamEnabled = true;
+        appendLog("RC stop [" + reason + "]: прошивка продолжает выдавать 0x42. "
+                + "Для ограничения нагрузки оставлен только " + RESEARCH_RC_FREQUENCY_HZ
+                + " Гц; перед полётом Datalink надо освободить/перезапустить отдельно.");
+        return false;
+    }
+
+    private void normalizeInheritedUart0Stream(String reason) {
+        if (controlsResearchActive || streamEnabled
+                || researchTransports == null
+                || !researchTransports.isWritable(ResearchTransports.UART0)) {
+            return;
+        }
+
+        long before = uart0ChannelFrameCount.get();
+        sleepQuiet(700);
+        long after = uart0ChannelFrameCount.get();
+        long observed = Math.max(0, after - before);
+        if (observed < 2) return;
+
+        appendLog("RC startup guard [" + reason + "]: обнаружен наследованный UART0 0x42 поток "
+                + "без локального запуска, кадров за 700 мс=" + observed + ". Пытаюсь погасить.");
+        boolean stopped = stopUart0StreamVerified("startup inherited");
+        if (!stopped) {
+            runOnUiThread(() -> {
+                setStatus("Обнаружен остаточный RC-поток; ограничен до 4 Гц");
+                if (controlsResearchText != null) {
+                    controlsResearchText.setBackgroundColor(Color.rgb(255, 224, 178));
+                    controlsResearchText.setText(
+                            "Обнаружен поток 0x42 от предыдущего сеанса. OFF не подтвердился; "
+                                    + "нагрузка ограничена до 4 Гц. Исследование не запускайте до перезапуска Datalink.");
+                }
+            });
+        }
     }
 
     private void stopControlsResearch(boolean userInitiated) {
@@ -1106,20 +1221,24 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         }
 
         worker.submit(() -> {
-            byte[] off = SiyiProtocol.channelStreamRequest(0, 0);
-            for (int i = 0; i < 3; i++) {
-                sendResearchFrame(ResearchTransports.UART0, off,
-                        i == 0 ? "HCR 0x42 OFF" : null);
-                sleepQuiet(60);
-            }
-            streamEnabled = false;
+            boolean stopped = stopUart0StreamVerified("research");
             runOnUiThread(() -> {
                 if (userInitiated) {
-                    controlsResearchText.setBackgroundColor(Color.rgb(232, 245, 233));
-                    controlsResearchText.setText(
-                            "Исследование остановлено. Записанные опыты сохранены в памяти и войдут в ZIP-отчёт.");
+                    if (stopped) {
+                        controlsResearchText.setBackgroundColor(Color.rgb(232, 245, 233));
+                        controlsResearchText.setText(
+                                "Исследование остановлено. Остановка RC-потока подтверждена. "
+                                        + "Записанные опыты сохранены в памяти и войдут в ZIP-отчёт.");
+                    } else {
+                        controlsResearchText.setBackgroundColor(Color.rgb(255, 224, 178));
+                        controlsResearchText.setText(
+                                "Исследование завершено, но прошивка продолжила выдавать 0x42. "
+                                        + "Нагрузка ограничена до 4 Гц; перед полётом перезапустите/освободите Datalink.");
+                    }
                 }
-                setStatus("RC-поток исследования выключен");
+                setStatus(stopped
+                        ? "RC-поток исследования выключен и проверен"
+                        : "Остаточный RC-поток ограничен до 4 Гц");
             });
         });
     }
@@ -1266,7 +1385,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         synchronized (finderHistory) {
             finderHistory.setLength(0);
         }
-        finderText.setText("Поиск сброшен. Для C/D нажмите «АВТОПОИСК C/D (20 Гц)» или снимите базу вручную.");
+        finderText.setText("Поиск сброшен. Для C/D нажмите «АВТОПОИСК C/D (4 Гц)» или снимите базу вручную.");
         appendLog("Switch Finder: поиск сброшен.");
     }
 
@@ -1296,19 +1415,18 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
         finderText.setBackgroundColor(Color.rgb(255, 243, 224));
         finderText.setText("Активный поиск C/D: сначала читаю mapping, затем включаю чистый поток RC. Разрешите USB, если Android спросит. Нажмите C, затем «C → сравнить»; D — «D → сравнить».");
-        appendLog("Switch Finder ACTIVE: C/D, AUTO transports. Сначала пробуем официальный RC 4 Гц, затем при необходимости 20 Гц.");
+        appendLog("Switch Finder ACTIVE: C/D, AUTO transports. Используем только проверенный официальный RC 4 Гц; повышение до 20 Гц отключено после аппаратного инцидента 2026-10-06.");
         connectSelectedTransport();
 
         worker.submit(() -> {
             sleepQuiet(1900);
             sendSelectedFrame(SiyiProtocol.mappingRequest(nextSeq()), "0x48 PRE-RC mapping");
             sleepQuiet(700);
-            activateFinderStreamOnAllWritable(2, "4Hz");
-            sleepQuiet(1400);
+            activateFinderStreamOnAllWritable(RESEARCH_RC_FREQUENCY_CODE, "4Hz");
+            sleepQuiet(1800);
 
             if (channelFrameCount <= channelFramesBefore) {
-                appendLog("RC 4 Гц: живых 0x42 кадров пока нет; пробуем 20 Гц.");
-                activateFinderStreamOnAllWritable(5, "20Hz");
+                appendLog("RC 4 Гц: живых 0x42 кадров нет. До 20 Гц автоматически не повышаем; сохраните диагностику и проверьте Datalink.");
             } else {
                 appendLog("RC 4 Гц: получены живые 0x42 кадры; оставляем документированный 4 Гц для чистого опыта.");
             }
@@ -1322,8 +1440,8 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 runOnUiThread(() -> {
                     finderText.setBackgroundColor(Color.rgb(255, 224, 178));
                     finderText.setText("Нет ответа SIYI SDK. Откройте SIYI TX → Datalink и проверьте Connection. "
-                            + "Для UART используйте /dev/ttyHS0; приложение 1.5.5 настраивает его после открытия на 115200 raw. "
-                            + "После смены Connection снова нажмите «АВТОПОИСК C/D (20 Гц)».");
+                            + "Для UART используйте /dev/ttyHS0; приложение 1.5.6 настраивает его после открытия на 115200 raw. "
+                            + "После смены Connection снова нажмите «АВТОПОИСК C/D (4 Гц)».");
                 });
             }
         });
@@ -1451,7 +1569,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
     private void handleSiyiFrame(String source, SiyiProtocol.Frame frame) {
         validSiyiFrames++;
-        // A 20 Hz RC stream must not flood the main thread with diagnostic text.
+        // An RC stream must not flood the main thread with diagnostic text.
         // Keep enough early frames for diagnosis, then log only sparse checkpoints.
         if (validSiyiFrames <= 8 || (validSiyiFrames % 100) == 0) {
             appendLog("SIYI " + source + " frame #" + validSiyiFrames + " cmd=0x"
@@ -1495,6 +1613,9 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             return;
         }
         channelFrameCount++;
+        if (ResearchTransports.UART0.equals(source)) {
+            uart0ChannelFrameCount.incrementAndGet();
+        }
         int[] values = new int[CHANNEL_COUNT];
         for (int i = 0; i < CHANNEL_COUNT; i++) values[i] = SiyiProtocol.u16le(data, i * 2);
         System.arraycopy(values, 0, channelValue, 0, CHANNEL_COUNT);
@@ -1505,15 +1626,19 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
         final long researchNow = System.currentTimeMillis();
         final long frameNumber = channelFrameCount;
         if (controlsResearchActive) {
-            // Every 20 Hz frame is still recorded by the research model.
+            // Every received RC frame is still recorded by the research model.
             controlsResearch.onChannels(values, researchNow);
         }
 
-        // The MK15 Android UI cannot comfortably redraw 16 channel rows at 5 Hz
-        // while also serving accessibility/UI automation. Keep every 20 Hz frame in
-        // the research model, but refresh the visible table only once per second
-        // after the short startup burst. Measurement fidelity is unchanged.
-        if (frameNumber <= 4 || (frameNumber % 20) == 0) {
+        // Keep every received RC frame in the research model, but redraw the 16-row
+        // table at most once per second. This limit is wall-clock based, so it remains
+        // stable for both the normal 4 Hz stream and any inherited higher-rate stream.
+        long uiNow = android.os.SystemClock.uptimeMillis();
+        long previousUi = lastChannelUiUpdateMs.get();
+        boolean renderNow = frameNumber <= 4
+                || (uiNow - previousUi >= 1000
+                && lastChannelUiUpdateMs.compareAndSet(previousUi, uiNow));
+        if (renderNow) {
             runOnUiThread(() -> {
                 for (int i = 0; i < CHANNEL_COUNT; i++) {
                     if (controlsResearchActive) {
@@ -1713,7 +1838,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 try {
                     Map<String, String> fields = new LinkedHashMap<>();
                     fields.put("report_id", zip.getName());
-                    fields.put("app_version", "1.5.5");
+                    fields.put("app_version", "1.5.6");
                     fields.put("package", getPackageName());
                     fields.put("device", Build.MANUFACTURER + " " + Build.MODEL);
                     fields.put("android", Build.VERSION.RELEASE + " / API " + Build.VERSION.SDK_INT);
@@ -1787,7 +1912,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 }
 
                 String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-                String fileName = "MK15_Report_" + ts + "_v1.5.5.zip";
+                String fileName = "MK15_Report_" + ts + "_v1.5.6.zip";
 
                 File base = getExternalFilesDir(null);
                 if (base == null) base = getFilesDir();
@@ -1865,7 +1990,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             String reason, String status, String sa, String fileName) {
         return "report_format=2\n"
                 + "app=MK15 Port Inspector\n"
-                + "app_version=1.5.5\n"
+                + "app_version=1.5.6\n"
                 + "package=" + getPackageName() + "\n"
                 + "created_at=" + new SimpleDateFormat(
                         "yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(new Date()) + "\n"
@@ -1892,7 +2017,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
 
     private String buildReportReadme() {
         return "MK15 Port Inspector diagnostic report ZIP\n\n"
-                + "Created entirely on the MK15 without ADB. Version 1.5.5 configures official UART0 (/dev/ttyHS0) to 115200 raw before SDK probing.\n"
+                + "Created entirely on the MK15 without ADB. Version 1.5.6 configures official UART0 (/dev/ttyHS0) to 115200 raw before SDK probing.\n"
                 + "The working ZIP is kept under the app external files/reports directory.\n"
                 + "ZIP → Download copies it to Download/MK15PortInspector for File Explorer and adb pull.\n"
                 + "ZIP → флешка/файл opens Android's file picker; select a USB flash drive if it is mounted.\n"
@@ -2073,7 +2198,7 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             if (!dir.exists()) dir.mkdirs();
             runtimeLogFile = new File(dir, "MK15_PortInspector_runtime.log");
             try (FileWriter fw = new FileWriter(runtimeLogFile, false)) {
-                fw.write("MK15 Port Inspector 1.5.5 runtime log\n");
+                fw.write("MK15 Port Inspector 1.5.6 runtime log\n");
                 fw.write("Started: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(new Date()) + "\n");
                 fw.write("Path: " + runtimeLogFile.getAbsolutePath() + "\n\n");
             }
@@ -2165,7 +2290,19 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                 }
             } catch (Throwable ignored) {}
         }
+        if (researchTransports != null
+                && researchTransports.isWritable(ResearchTransports.UART0)) {
+            byte[] uartOff = SiyiProtocol.channelStreamRequest(0, 0);
+            for (int i = 0; i < 3; i++) {
+                sendResearchFrame(
+                        ResearchTransports.UART0,
+                        uartOff,
+                        i == 0 ? "0x42 OFF onDestroy" : null);
+                sleepQuiet(40);
+            }
+        }
         streamEnabled = false;
+        residualRcStreamObserved = false;
         closeSerial();
         if (researchTransports != null) researchTransports.stopAll();
         linuxInputProbe.stop();
