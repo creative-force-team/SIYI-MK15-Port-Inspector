@@ -1086,7 +1086,10 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
                     + " stream4HzSent=" + finalSent);
 
             sleepQuiet(1800);
-            if (channelFrameCount <= framesBefore) {
+            int framesAfterStart = channelFrameCount - framesBefore;
+            appendLog("Hardware Controls Research: 1800ms sample frames=" + framesAfterStart
+                    + " target=" + RESEARCH_RC_FREQUENCY_HZ + "Hz.");
+            if (framesAfterStart <= 0) {
                 appendLog("Hardware Controls Research: после запуска нет новых 0x42 channel frames.");
                 runOnUiThread(() -> {
                     controlsResearchText.setBackgroundColor(Color.rgb(255, 224, 178));
