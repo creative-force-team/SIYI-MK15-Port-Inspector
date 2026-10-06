@@ -123,8 +123,8 @@ A real MK15 report showed that the operator was testing the physical **C/D butto
 Version 1.3.0 therefore:
 - passively AUTO-connects USB/UDP/UART0/UART1/UART2 after launch;
 - does not auto-connect an unrelated paired Bluetooth device;
-- adds a one-button **АВТОПОИСК C/D (4 Гц)** mode;
-- samples SIYI RC channels at 4 Hz during active C/D research;
+- adds a one-button **АВТОПОИСК C/D (20 Гц)** mode;
+- samples SIYI RC channels at 20 Hz during active C/D research;
 - retains per-channel min/max/last/changeCount so a momentary button press is not lost after the button is released;
 - ranks high-value RC/Input activity before continuously changing interrupt counters;
 - changes the comparison wording from SA-specific to generic control research.
@@ -169,7 +169,7 @@ Version 1.3.2 explicitly disables IUCLC on ttyHS0 and also contains a CRC-valida
 
 The current project stops at the research boundary: identify the exact MK15 software path and channel semantics for C/D. A separate future drone/robot control application will consume the resulting specification; it is not part of this repository's current goal.
 
-The 1.3.2 hardware report confirmed the mapping but showed that effective termios still had IUCLC enabled after the Java streams were opened. Version 1.3.3 therefore configures ttyHS0 **after** opening the streams, verifies effective termios again, and starts the RC probe with SIYI's exact documented 4 Hz request before trying 4 Hz.
+The 1.3.2 hardware report confirmed the mapping but showed that effective termios still had IUCLC enabled after the Java streams were opened. Version 1.3.3 therefore configures ttyHS0 **after** opening the streams, verifies effective termios again, and starts the RC probe with SIYI's exact documented 4 Hz request before trying 20 Hz.
 
 
 ## Binary-clean UART and isolated 0x42 probe 1.3.4
@@ -189,7 +189,7 @@ It also changes the RC experiment:
 - the 0x42 start command uses SIYI's exact documented sequence=0 request;
 - the start frame is sent three times;
 - no 0x48 or other SDK command is sent immediately after 0x42 while waiting for channel frames;
-- 4 Hz is tried first, 4 Hz only if no channel frames arrive.
+- 4 Hz is tried first, 20 Hz only if no channel frames arrive.
 
 
 ## Same-FD UART bridge 1.3.5
@@ -295,7 +295,7 @@ GitHub Actions run `36052471874` подтвердил сборку APK и Releas
 
 Версия 1.5.0 добавляет отдельный режим **«Исследование органов управления»** для A/B, SA/SB/SC, LD/RD, дополнительных кнопок/регуляторов и контрольных C/D.
 
-Режим использует доказанный SIYI UART0 `/dev/ttyHS0`, читает runtime mapping `0x48`, включает поток `0x42` 4 Гц и записывает отдельные физические опыты без изменения mapping или RC-конфигурации.
+Режим 1.5.0 использует доказанный SIYI UART0 `/dev/ttyHS0`, читает runtime mapping `0x48`, включает диагностический поток `0x42` 20 Гц и записывает отдельные физические опыты без изменения mapping или RC-конфигурации.
 
 Во время опыта таблица каналов показывает entity type/id, Current/Min/Max/Delta, состояние, число и время изменений; недавно изменившиеся строки подсвечиваются.
 
@@ -331,22 +331,45 @@ ZIP-отчёт дополнен:
 
 ## UI responsiveness fix 1.5.3
 
-Аппаратная проверка 1.5.2 на реальном SIYI MK15 подтвердила корректный приём RC 4 Гц, запись опыта и формирование ZIP, но выявила избыточную нагрузку интерфейса: каждая рамка 0x42 инициировала перерисовку всех 16 строк каналов.
+Аппаратная проверка 1.5.2 на реальном SIYI MK15 подтвердила корректный приём RC 20 Гц, запись опыта и формирование ZIP, но выявила избыточную нагрузку интерфейса: каждая рамка 0x42 инициировала перерисовку всех 16 строк каналов.
 
-Версия 1.5.3 сохраняет обработку и запись **каждого** RC-кадра на 4 Гц, но ограничивает визуальную перерисовку таблицы примерно 5 Гц после первых кадров. Это не уменьшает точность исследования; изменение разгружает главный поток Android, чтобы кнопки, переходы и завершение отчёта не ждали длинную очередь обновлений интерфейса.
+Версия 1.5.3 сохраняет обработку и запись **каждого** RC-кадра на 20 Гц, но ограничивает визуальную перерисовку таблицы примерно 5 Гц после первых кадров. Это не уменьшает точность исследования; изменение разгружает главный поток Android, чтобы кнопки, переходы и завершение отчёта не ждали длинную очередь обновлений интерфейса.
 
-Причина обнаружена в полном программном цикле на реальном пульте после подтверждённых этапов: UART0 mapping 0x48, поток 0x42 4 Гц, BEGIN/END контрольного опыта C и HCR 0x42 OFF. Сформированный 1.5.2 ZIP был отдельно извлечён и успешно проверен по JSON, CSV, Markdown, mapping и runtime-журналу.
+Причина обнаружена в полном программном цикле на реальном пульте после подтверждённых этапов: UART0 mapping 0x48, поток 0x42 20 Гц, BEGIN/END контрольного опыта C и HCR 0x42 OFF. Сформированный 1.5.2 ZIP был отдельно извлечён и успешно проверен по JSON, CSV, Markdown, mapping и runtime-журналу.
 
 
 ## UI responsiveness fix 1.5.4
 
-Аппаратная проверка 1.5.3 на реальном MK15 показала, что сохранения всех RC-кадров на 4 Гц и визуальной перерисовки таблицы примерно на 5 Гц всё ещё недостаточно для слабого Android-пульта: во время активного потока процесс занимал около половины одного ядра, а Android UI Automation не мог устойчиво получить дерево интерфейса. Сразу после «Стоп» дерево снова становилось доступно.
+Аппаратная проверка 1.5.3 на реальном MK15 показала, что сохранения всех RC-кадров на 20 Гц и визуальной перерисовки таблицы примерно на 5 Гц всё ещё недостаточно для слабого Android-пульта: во время активного потока процесс занимал около половины одного ядра, а Android UI Automation не мог устойчиво получить дерево интерфейса. Сразу после «Стоп» дерево снова становилось доступно.
 
-Версия 1.5.4 **не снижает частоту приёма и записи данных**: Hardware Controls Research по-прежнему получает каждый кадр RC 4 Гц. Ограничена только визуальная перерисовка 16 строк таблицы — после короткой стартовой серии экран обновляется примерно 1 раз в секунду. Для оператора этого достаточно, а точность измерения остаётся прежней.
+Версия 1.5.4 **не снижает частоту приёма и записи данных**: Hardware Controls Research по-прежнему получает каждый кадр RC 20 Гц. Ограничена только визуальная перерисовка 16 строк таблицы — после короткой стартовой серии экран обновляется примерно 1 раз в секунду. Для оператора этого достаточно, а точность измерения остаётся прежней.
 
 
-## UI responsiveness fix 1.5.6
+## Diagnostic logging fix 1.5.5
 
 Проверка 1.5.4 показала, что снижение визуального обновления таблицы до 1 Гц почти не изменило нагрузку: активный процесс на реальном MK15 оставался около 43% одного ядра, а Android UI Automation не мог получить дерево экрана до остановки RC-потока.
 
-Анализ выявил диагностический путь, работавший на каждом 20-Гц кадре UART0 с IUCLC: сообщение о сигнатуре `75 66`, отдельное логирование каждого восстановленного кадра, формирование `lastHex` через `String.format` и полная перерисовка текстового журнала. В 1.5.6 эти операции разрежены. Приём RC, модель Hardware Controls Research и запись каждого кадра по-прежнему работают на исходной частоте 4 Гц.
+Анализ выявил диагностический путь, работавший на каждом 20-Гц кадре UART0 с IUCLC: сообщение о сигнатуре `75 66`, отдельное логирование каждого восстановленного кадра, формирование `lastHex` и частое обновление текстового журнала. В 1.5.5 эти операции разрежены, но сам Hardware Controls Research всё ещё использовал диагностические 20 Гц.
+
+## Safe research stream 1.5.6
+
+После физической серии Сергея 6 октября 2026 года выяснилось, что 20-Гц поток `0x42` способен пережить перезапуск приложения и создавать тяжёлую нагрузку на Android 9 MK15. Версия 1.5.6 устраняет этот риск:
+
+- Hardware Controls Research использует только документированные и уже аппаратно доказанные **4 Гц**;
+- автоматическое повышение Finder до 20 Гц удалено;
+- интерфейс перерисовывает таблицу не чаще одного раза в секунду независимо от входной частоты;
+- команда `0x42 OFF` проверяется по фактическому прекращению UART0-кадров;
+- если OFF не подтверждается, приложение повторяет остановку и в крайнем случае принудительно ограничивает остаточный поток до 4 Гц;
+- при старте приложение обнаруживает унаследованный поток предыдущего сеанса и пытается погасить его до начала нового исследования.
+
+Аппаратная регрессия на реальном MK15: GitHub Actions run `37511688514`, job `112434177408`.
+
+Результат:
+
+- `RATE_SAMPLE=1800ms sample frames=8 target=4Hz`;
+- запросов 20 Гц в исследовательском сценарии нет;
+- `RC stop [research]: остановка подтверждена; новых UART0 0x42 кадров=1`;
+- `STOP_RESULT=FULL_STOP`;
+- `MK15_156_QA2=PASS`.
+
+Установленный APK 1.5.6 / versionCode 56: SHA-256 `ae0aebb07529a680f507fce2472d45bd517a8ab38135dcdc905ed05241a2d306`.
