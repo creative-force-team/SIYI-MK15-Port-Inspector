@@ -1167,14 +1167,23 @@ public final class MainActivity extends Activity implements SiyiProtocol.FrameLi
             return true;
         }
 
+        long fallbackBase = uart0ChannelFrameCount.get();
         sendUart0StreamCommand(
                 RESEARCH_RC_FREQUENCY_CODE,
                 "0x42 FALLBACK " + RESEARCH_RC_FREQUENCY_HZ + "Hz [" + reason + "]");
+        sleepQuiet(1500);
+        long fallbackDelta = Math.max(0, uart0ChannelFrameCount.get() - fallbackBase);
+        boolean capConfirmed = fallbackDelta <= 8;
+
         residualRcStreamObserved = true;
         streamEnabled = true;
         appendLog("RC stop [" + reason + "]: прошивка продолжает выдавать 0x42. "
-                + "Для ограничения нагрузки оставлен только " + RESEARCH_RC_FREQUENCY_HZ
-                + " Гц; перед полётом Datalink надо освободить/перезапустить отдельно.");
+                + "Fallback " + RESEARCH_RC_FREQUENCY_HZ + " Гц: кадров за 1500 мс="
+                + fallbackDelta + ", capConfirmed=" + capConfirmed + ". "
+                + "Перед полётом Datalink надо освободить/перезапустить отдельно.");
+        if (!capConfirmed) {
+            appendLog("RC stop [" + reason + "]: ВНИМАНИЕ — ограничение до 4 Гц не подтверждено.");
+        }
         return false;
     }
 
